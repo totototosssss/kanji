@@ -7,108 +7,150 @@
 
 body {
     font-family: 'Noto Sans JP', sans-serif;
-    line-height: 1.6;
-    background-color: #f4f7f6; /* 少しだけ色味のある白 */
-    color: #333;
+    line-height: 1.7; /* 行間を少し広めに */
+    background: linear-gradient(135deg, #1f262e 0%, #34495e 100%); /* ダークで洗練された背景 */
+    color: #ecf0f1; /* 明るいテキストカラー */
     display: flex;
     justify-content: center;
-    align-items: flex-start; /* 上寄せで開始 */
+    align-items: center; /* 垂直方向も中央揃えに */
     min-height: 100vh;
     padding: 20px;
+    overflow: hidden; /* 飛び交う要素が画面外にはみ出てもスクロールバーが出ないように */
 }
 
 .container {
     width: 100%;
-    max-width: 700px; /* コンテンツの最大幅 */
-    background-color: #fff;
-    padding: 30px 40px;
-    border-radius: 12px;
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    max-width: 750px;
+    background-color: rgba(44, 62, 80, 0.85); /* 半透明のダーク背景 */
+    padding: 35px 45px;
+    border-radius: 15px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(236, 240, 241, 0.2); /* 細い枠線 */
+    position: relative; /* z-indexの基準 */
+    z-index: 10; /* 他の要素より手前に */
 }
 
 header {
     text-align: center;
-    margin-bottom: 30px;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 20px;
+    margin-bottom: 35px;
+    border-bottom: 1px solid rgba(236, 240, 241, 0.15);
+    padding-bottom: 25px;
 }
 
 header h1 {
-    font-family: 'Playfair Display', serif; /* 見出し用フォント */
-    font-size: 2.8em;
-    color: #2c3e50; /* 濃いブルーグレー */
-    margin-bottom: 10px;
+    font-family: 'Orbitron', sans-serif; /* SF的なフォント */
+    font-size: 3em;
+    color: #1abc9c; /* 鮮やかなアクセントカラー */
+    text-shadow: 0 0 10px #1abc9c, 0 0 20px #1abc9c; /* ネオン風エフェクト */
+    margin-bottom: 15px;
+    letter-spacing: 1px;
 }
 
 #game-status {
     display: flex;
     justify-content: space-around;
-    font-size: 0.9em;
-    color: #555;
+    font-size: 1em;
+    color: #bdc3c7; /* やや明るめのグレー */
 }
+#game-status p {
+    background-color: rgba(0,0,0,0.2);
+    padding: 5px 10px;
+    border-radius: 5px;
+}
+
 
 #quiz-area {
     text-align: center;
 }
 
-#loading-message {
-    padding: 40px 0;
-    font-size: 1.2em;
-    color: #777;
+#loading-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 0;
+    font-size: 1.3em;
+    color: #bdc3c7;
+}
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(236, 240, 241, 0.2);
+    border-top: 5px solid #1abc9c; /* アクセントカラー */
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+    margin-bottom: 20px;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 #kanji-display {
-    font-size: 5em; /* 漢字のサイズは大きめに */
+    font-size: 6em;
     font-weight: bold;
-    color: #34495e; /* 漢字の色 */
-    margin: 20px 0;
-    min-height: 1.2em; /* 漢字がなくても高さを確保 */
-    letter-spacing: 0.05em;
+    color: #ecf0f1;
+    margin: 25px 0;
+    min-height: 1.3em;
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 8px rgba(255,255,255,0.3);
 }
 
 #image-display img {
     max-width: 100%;
-    max-height: 200px; /* 画像の最大高さ */
-    margin-bottom: 15px;
-    border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    max-height: 220px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.25);
+    border: 2px solid rgba(236, 240, 241, 0.3);
 }
 
 #answer-input {
     width: 100%;
-    padding: 15px;
-    font-size: 1.2em;
-    border: 2px solid #ddd;
-    border-radius: 8px;
-    margin-bottom: 20px;
+    padding: 18px;
+    font-size: 1.3em;
+    background-color: rgba(0,0,0,0.3);
+    color: #ecf0f1;
+    border: 2px solid #1abc9c; /* アクセントカラー */
+    border-radius: 10px;
+    margin-bottom: 25px;
     text-align: center;
-    transition: border-color 0.3s ease;
+    transition: all 0.3s ease;
+}
+
+#answer-input::placeholder {
+    color: #7f8c8d;
 }
 
 #answer-input:focus {
     outline: none;
-    border-color: #3498db; /* フォーカス時の色 */
+    border-color: #1dd2af;
+    box-shadow: 0 0 15px rgba(26, 188, 156, 0.5);
 }
 
 button {
-    background-color: #3498db; /* メインのボタン色 (青系) */
+    background: linear-gradient(145deg, #1abc9c, #16a085);
     color: white;
     border: none;
-    padding: 15px 30px;
-    font-size: 1.1em;
+    padding: 18px 35px;
+    font-size: 1.2em;
     font-weight: bold;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
-    transition: background-color 0.3s ease, transform 0.1s ease;
+    transition: all 0.2s ease-out;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    box-shadow: 0 5px 15px rgba(26, 188, 156, 0.3);
 }
 
 button:hover {
-    background-color: #2980b9;
+    background: linear-gradient(145deg, #1dd2af, #18b99a);
+    box-shadow: 0 8px 20px rgba(26, 188, 156, 0.4);
+    transform: translateY(-3px);
 }
 button:active {
-    transform: translateY(1px);
+    transform: translateY(0px);
+    box-shadow: 0 3px 10px rgba(26, 188, 156, 0.2);
 }
 
 #submit-button {
@@ -116,61 +158,79 @@ button:active {
 }
 
 #feedback-area {
-    margin-top: 30px;
-    padding: 20px;
-    border-radius: 8px;
-    background-color: #f9f9f9;
+    margin-top: 35px;
+    padding: 25px;
+    border-radius: 10px;
+    background-color: rgba(0,0,0,0.2);
+    opacity: 0; /* 初期は透明、JSで制御 */
+    transform: translateY(20px); /* 初期は少し下に */
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+}
+#feedback-area:not(.hidden) { /* hiddenクラスがないとき（表示時） */
+    opacity: 1;
+    transform: translateY(0);
 }
 
+
 #feedback-text {
-    font-size: 1.4em;
+    font-size: 1.6em;
     font-weight: bold;
-    margin-bottom: 15px;
+    margin-bottom: 20px;
 }
 
 #feedback-text.correct {
-    color: #2ecc71; /* 正解の色 (緑系) */
+    color: #2ecc71; /* 明るい緑 */
+    text-shadow: 0 0 8px #2ecc71;
 }
 
 #feedback-text.incorrect {
-    color: #e74c3c; /* 不正解の色 (赤系) */
+    color: #e74c3c; /* 明るい赤 */
+    text-shadow: 0 0 8px #e74c3c;
 }
 
+#info-area {
+    background-color: rgba(0,0,0,0.15);
+    padding: 15px;
+    border-radius: 8px;
+}
 #info-area p {
-    font-size: 0.95em;
-    color: #444;
-    margin-bottom: 8px;
+    font-size: 1em;
+    color: #bdc3c7;
+    margin-bottom: 10px;
     text-align: left;
 }
 #info-area p strong {
-    color: #2c3e50;
+    color: #1abc9c;
 }
 
 
 #next-button {
-    margin-top: 20px;
-    background-color: #2ecc71; /* 次へボタンの色 */
+    margin-top: 25px;
+    background: linear-gradient(145deg, #3498db, #2980b9); /* 青系 */
+    box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
 }
 #next-button:hover {
-    background-color: #27ae60;
+    background: linear-gradient(145deg, #5dade2, #3c97d3);
+    box-shadow: 0 8px 20px rgba(52, 152, 219, 0.4);
 }
 
 #game-over-area h2 {
-    font-size: 2em;
-    color: #3498db;
-    margin-bottom: 15px;
+    font-size: 2.5em;
+    color: #1abc9c;
+    margin-bottom: 20px;
 }
 #game-over-area p {
-    font-size: 1.2em;
-    margin-bottom: 25px;
+    font-size: 1.3em;
+    margin-bottom: 30px;
 }
 #restart-button {
-    background-color: #e67e22; /* リスタートボタンの色 */
+    background: linear-gradient(145deg, #e67e22, #d35400); /* オレンジ系 */
+    box-shadow: 0 5px 15px rgba(230, 126, 34, 0.3);
 }
 #restart-button:hover {
-    background-color: #d35400;
+    background: linear-gradient(145deg, #f39c12, #e77e23);
+    box-shadow: 0 8px 20px rgba(230, 126, 34, 0.4);
 }
-
 
 .hidden {
     display: none !important;
@@ -178,26 +238,109 @@ button:active {
 
 footer {
     text-align: center;
-    margin-top: 40px;
-    padding-top: 20px;
-    border-top: 1px solid #eee;
-    font-size: 0.8em;
-    color: #777;
+    margin-top: 50px;
+    padding-top: 25px;
+    border-top: 1px solid rgba(236, 240, 241, 0.1);
+    font-size: 0.9em;
+    color: #7f8c8d;
 }
 
-/* レスポンシブ対応 (簡単な例) */
-@media (max-width: 600px) {
+/* --- 飛び交うエフェクトのためのスタイル --- */
+.flying-element {
+    position: fixed;
+    z-index: 10000; /* コンテナ(z-index:10)よりもさらに手前 */
+    pointer-events: none;
+    opacity: 0; /* 初期アニメーションで制御 */
+    will-change: transform, opacity; /* アニメーションのヒント */
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    font-weight: bold;
+    max-width: 250px; /* 最大幅を少し増やす */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; /* はみ出たテキストは... */
+    text-align: center;
+}
+
+.flying-text {
+    /* レインボーカラーはJSで制御 or CSS animation */
+    color: white; /* 基本色 */
+    font-size: 1.3em; /* 少し大きめ */
+    text-shadow: 0 0 5px black, 0 0 10px black; /* 読みやすさのため */
+    /* background-color はJSで動的に (レインボーに影響しないように) */
+}
+
+/* レインボーテキスト用のアニメーション (hue-rotateを使用する場合) */
+.rainbow-text-effect {
+    animation: rainbowHueRotate 3s linear infinite;
+}
+@keyframes rainbowHueRotate {
+    0%   { filter: hue-rotate(0deg) brightness(1.2) saturate(1.5); }
+    100% { filter: hue-rotate(360deg) brightness(1.2) saturate(1.5); }
+}
+
+
+.flying-image img {
+    display: block;
+    max-width: 120px;
+    max-height: 120px;
+    border-radius: 6px;
+    /* border はJSで動的に (レインボーに影響しないように) */
+    filter: brightness(1.1) saturate(1.2);
+}
+
+/* 共通の出現・消滅アニメーション（例） */
+@keyframes flyingAppear {
+    0% { transform: scale(0.3) rotate(-30deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes flyingDisappear {
+    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: scale(0.2) rotate(30deg); opacity: 0; }
+}
+
+
+/* レスポンシブ対応 (調整) */
+@media (max-width: 768px) {
     .container {
-        padding: 20px;
+        padding: 25px;
     }
     header h1 {
-        font-size: 2.2em;
+        font-size: 2.5em;
     }
     #kanji-display {
-        font-size: 4em;
+        font-size: 5em;
     }
     button, #answer-input {
+        font-size: 1.1em;
+        padding: 15px 25px;
+    }
+    .flying-text {
+        font-size: 1.1em;
+    }
+    .flying-image img {
+        max-width: 80px;
+        max-height: 80px;
+    }
+}
+
+@media (max-width: 480px) {
+    header h1 {
+        font-size: 2em;
+    }
+    #kanji-display {
+        font-size: 3.5em;
+    }
+    #game-status p {
+        font-size: 0.8em;
+    }
+     .flying-text {
         font-size: 1em;
-        padding: 12px 20px;
+        padding: 5px 8px;
+    }
+    .flying-image img {
+        max-width: 60px;
+        max-height: 60px;
     }
 }
