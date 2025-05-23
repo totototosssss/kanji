@@ -8,13 +8,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Orbitron:wght@700;900&family=Roboto:wght@300;400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="performance-monitor" style="position:fixed; top:0; left:0; background:rgba(0,0,0,0.7); color:lime; padding:5px 8px; z-index:200000; font-size:12px; font-family: monospace;">FPS: N/A | Elements: 0 | Level: 0</div>
+    <div id="performance-monitor" style="position:fixed; top:0; left:0; background:rgba(0,0,0,0.7); color:lime; padding:5px 8px; z-index:200000; font-size:12px; font-family: monospace;">FPS: N/A | Chaos Elements: 0 | Game Display Level: 0</div>
 
     <div class="container">
         <header>
             <h1 class="main-title"><span>KANJI</span> QUIZ <span class="neo-text">NEO</span></h1>
             <div id="game-status" class="game-status-bar">
-                <p>LEVEL: <span id="current-level-display">1</span></p> <p>SCORE: <span id="current-score">0</span></p>
+                <p>LEVEL: <span id="current-level-display">1</span></p>
+                <p>SCORE: <span id="current-score">0</span></p>
             </div>
         </header>
 
@@ -28,6 +29,7 @@
                 <div id="image-container" class="image-viewer">
                     </div>
                 <div id="kanji-character-display" class="kanji-viewer"></div>
+                <div id="answer-length-hint-display" class="answer-length-hint hidden"></div>
                 <input type="text" id="answer-input-field" class="answer-field" placeholder="読み仮名を入力 (ひらがな)">
                 <button id="submit-answer-button" class="action-button submit-btn"><span>解答</span></button>
             </div>
@@ -50,7 +52,7 @@
         </main>
 
         <footer class="page-footer">
-            <p>&copy; 2025 KANJI QUIZ NEO - CHAOS</p>
+            <p>&copy; 2025 KANJI QUIZ NEO - HINT EDITION</p>
         </footer>
     </div>
 
