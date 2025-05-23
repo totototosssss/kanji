@@ -273,4 +273,72 @@ header {
 .page-footer {
     text-align: center;
     margin-top: 35px;
-    padding-top
+    padding-top: 20px;
+    border-top: 1px solid rgba(100, 255, 218, 0.1);
+    font-size: 0.85em;
+    color: #8892B0;
+}
+
+/* --- Flying Elements (Enhanced) --- */
+.flying-element {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    will-change: transform, opacity, filter;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 700; /* Bold for impact */
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    /* Base shadow, color will override */
+    box-shadow: 0 0 10px rgba(0,0,0,0.5), 0 0 20px rgba(0,0,0,0.3);
+    transition: opacity 0.3s ease-out; /* For JS controlled fade-out if needed */
+}
+
+.flying-text {
+    font-size: 1.4em; /* Larger */
+    /* Color and shadow controlled by JS for rainbow */
+}
+
+.flying-image img {
+    display: block;
+    max-width: 100px; /* Slightly smaller for more quantity */
+    max-height: 100px;
+    border-radius: 8px;
+    filter: saturate(1.2) contrast(1.1);
+    /* Border controlled by JS for rainbow */
+}
+
+/* Keyframes for more complex appear/disappear (can be used with JS .animate()) */
+@keyframes burstAppear {
+    0% { transform: scale(0.1) rotate(-180deg); opacity: 0; filter: blur(10px); }
+    60% { transform: scale(1.2) rotate(15deg); opacity: 1; filter: blur(0px); }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; filter: blur(0px); }
+}
+
+@keyframes chaoticMoveAndFade {
+    0% { opacity: 1; transform: translate(var(--tx-start), var(--ty-start)) rotate(var(--rot-start)) scale(1); }
+    100% { opacity: 0; transform: translate(var(--tx-end), var(--ty-end)) rotate(var(--rot-end)) scale(0.3); }
+}
+
+
+/* --- Responsive Adjustments --- */
+@media (max-width: 768px) {
+    .container { padding: 20px 25px; }
+    .main-title { font-size: 2.2em; }
+    .kanji-viewer { font-size: 5em; }
+    .action-button, .answer-field { font-size: 1em; padding: 14px 20px; }
+    .flying-text { font-size: 1.2em; }
+    .flying-image img { max-width: 80px; max-height: 80px; }
+}
+@media (max-width: 480px) {
+    .main-title { font-size: 1.8em; }
+    .kanji-viewer { font-size: 3.8em; }
+    .game-status-bar p { font-size: 0.8em; padding: 4px 8px; }
+    .flying-text { font-size: 1em; padding: 6px 10px; }
+    .flying-image img { max-width: 60px; max-height: 60px; }
+}
