@@ -2,11 +2,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Game Configuration & User Text ---
     const LONG_NANDEYA_TEXT_CONTENT = '相当偏差値の高い高校（身の丈に合ってない）に通っています。高三なのですが未だにアルファベットが読めないことやadhdっぽいことに悩んで親に土下座してwais受けさせてもらいました。知覚推理144言語理解142ワーキングメモリ130処理速度84でした。　総合は覚えてないですが多分139とかだったはずです。ウィスクの年齢なのにウェイス受けさせられた。なんでや';
     let nandeyaPhrases = []; // Array of objects: { text: "phrase", isEmphasized: boolean }
-    const STONE_IMAGE_FILENAME = 'stone.png'; // All images will be this
+    const STONE_IMAGE_FILENAME = 'stone.png';
 
     // --- HTML Element Cache & Validation ---
     const elements = {
-        performanceMonitor: document.getElementById('performance-monitor'), // For FPS and element count
+        performanceMonitor: document.getElementById('performance-monitor'),
         loadingDisplay: document.getElementById('loading-display'),
         questionSection: document.getElementById('question-section'),
         kanjiDisplay: document.getElementById('kanji-character-display'),
@@ -24,118 +24,193 @@ document.addEventListener('DOMContentLoaded', () => {
         nextButton: document.getElementById('next-question-button'),
         gameOverSection: document.getElementById('game-over-section'),
         restartButton: document.getElementById('restart-game-button'),
-        currentLevelDisplay: document.getElementById('current-level'),
+        currentLevelDisplay: document.getElementById('current-level-display'), // Corrected ID
         currentScoreDisplay: document.getElementById('current-score'),
         finalScoreDisplay: document.getElementById('final-score-value')
     };
     for (const key in elements) { if (!elements[key]) { const e=`FATAL ERROR: UI Element '${key}' not found. Check HTML IDs.`; console.error(e); if(document.body)document.body.innerHTML=`<p style="color:red;font-size:24px;padding:30px; text-align:center;">${e}</p>`; return; }}
 
     // --- Game State & Chaos Control ---
-    let allQuizData = [];
-    let currentQuestionIndex = 0;
+    let quizDataByLevel = {}; // Stores questions grouped by level: { "1": [q1, q2], "2": [q3] }
+    let availableLevels = []; // Sorted list of levels that have questions
+    let currentQuestion = null; // The current question object
     let score = 0;
-    let currentProcessedLevel = -1;
+    let currentGameLevel = 1; // Starts at level 1, increments with each correct answer
+    let maxReachedLevel = 0; // Highest actual level reached based on CSV data
     const csvFilePath = 'ankiDeck.csv';
     let chaosIntervalId = null;
     let isChaosModeActive = false;
     let flyingElementHueStart = Math.random() * 360;
-    let flyingElementCount = 0; // For performance monitor
+    let flyingElementCount = 0;
+    let unaskedQuestionsByLevel = {}; // To track unasked questions within the current pool for a level
 
-    // --- Performance Monitor (Simple FPS and Element Count) ---
-    let lastFrameTime = performance.now();
-    let frameCount = 0;
-    function updatePerformanceMonitor() {
-        frameCount++;
-        const now = performance.now();
+    // --- Performance Monitor ---
+    let lastFrameTime = performance.now(); let frameCount = 0;
+    function updatePerformanceMonitorLoop() {
+        frameCount++; const now = performance.now();
         if (now - lastFrameTime >= 1000) {
             const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
-            elements.performanceMonitor.textContent = `FPS: ${fps} | Elements: ${flyingElementCount}`;
-            frameCount = 0;
-            lastFrameTime = now;
+            elements.performanceMonitor.textContent = `FPS: ${fps} | Chaos Elements: ${flyingElementCount} | Game Level: ${currentGameLevel}`;
+            frameCount = 0; lastFrameTime = now;
         }
-        if (isChaosModeActive || document.querySelectorAll('.flying-element').length > 0) { // Only request if active elements
-            requestAnimationFrame(updatePerformanceMonitor);
-        }
+        requestAnimationFrame(updatePerformanceMonitorLoop);
     }
-    requestAnimationFrame(updatePerformanceMonitor); // Start monitoring
+    requestAnimationFrame(updatePerformanceMonitorLoop);
 
 
     // --- Nandeya Text Processing (with emphasis flag) ---
     function splitNandeyaText() {
-        const minL = 6; const maxL = 30; let txt = LONG_NANDEYA_TEXT_CONTENT; nandeyaPhrases = [];
-        const emphasisKeyword = "なんでや";
-        const emphasisRegex = new RegExp(emphasisKeyword, "g");
-
-        while (txt.length > 0) {
-            let len = Math.floor(Math.random() * (maxL - minL + 1)) + minL;
-            let p = txt.substring(0, Math.min(len, txt.length));
-            let cut = -1;
-            ['。', '、', ' ', '　', '！', '？', '（', '）', ')', '(', '「', '」', '・', '…'].forEach(char => {
-                let i = p.lastIndexOf(char);
-                if (i > p.length / 2.5 && i > cut) cut = i; // Prefer cuts towards end
-            });
-
-            if (cut !== -1 && txt.length > cut + 1) p = txt.substring(0, cut + 1);
-            else if (txt.length <= maxL * 1.3) p = txt;
-            
-            const trimmedPhrase = p.trim();
-            if (trimmedPhrase) {
-                nandeyaPhrases.push({
-                    text: trimmedPhrase,
-                    isEmphasized: emphasisRegex.test(trimmedPhrase) // Check if "なんでや" is present
-                });
-            }
-            txt = txt.substring(p.length);
-            if (p.length === 0 && txt.length > 0) {
-                const safetyPhrase = txt.substring(0, Math.min(txt.length, maxL));
-                nandeyaPhrases.push({ text: safetyPhrase.trim(), isEmphasized: emphasisRegex.test(safetyPhrase) });
-                txt = ""; // Break infinite loop
-            }
-        }
-        if (nandeyaPhrases.length === 0 && LONG_NANDEYA_TEXT_CONTENT) { // Fallback
-            const fallbackPhrase = LONG_NANDEYA_TEXT_CONTENT.substring(0, maxL);
-            nandeyaPhrases.push({ text: fallbackPhrase.trim(), isEmphasized: emphasisRegex.test(fallbackPhrase) });
-        }
-    }
+        const minL=5; const maxL=25; let txt=LONG_NANDEYA_TEXT_CONTENT; nandeyaPhrases=[];
+        const emphasisKeyword="なんでや"; const emphasisRegex=new RegExp(emphasisKeyword,"g");
+        while(txt.length>0){let len=Math.floor(Math.random()*(maxL-minL+1))+minL;let p=txt.substring(0,Math.min(len,txt.length));let cut=-1;
+        ['。','、',' ','　','！','？','（','）',')','(','「','」','・','…'].forEach(char=>{let i=p.lastIndexOf(char);if(i>p.length/3&&i>cut)cut=i;});
+        if(cut!==-1&&txt.length>cut+1)p=txt.substring(0,cut+1);else if(txt.length<=maxL*1.2)p=txt;
+        const tp=p.trim();if(tp)nandeyaPhrases.push({text:tp,isEmphasized:emphasisRegex.test(tp)});
+        txt=txt.substring(p.length);if(p.length===0&&txt.length>0){const sp=txt.substring(0,Math.min(txt.length,maxL));nandeyaPhrases.push({text:sp.trim(),isEmphasized:emphasisRegex.test(sp)});txt="";}}
+        if(nandeyaPhrases.length===0&&LONG_NANDEYA_TEXT_CONTENT){const fp=LONG_NANDEYA_TEXT_CONTENT.substring(0,maxL);nandeyaPhrases.push({text:fp.trim(),isEmphasized:emphasisRegex.test(fp)});}}
 
     // --- Data Loading & Processing ---
     async function loadAndProcessCSV() {
         elements.loadingDisplay.classList.remove('hidden'); elements.questionSection.classList.add('hidden'); elements.feedbackSection.classList.add('hidden'); elements.gameOverSection.classList.add('hidden');
-        try { const r = await fetch(csvFilePath); if (!r.ok) throw new Error(`CSV File Load Error: ${r.status} ${r.statusText}`); const t = await r.text();
-            Papa.parse(t, { header: true, skipEmptyLines: true, complete: (res) => { if (res.errors.length > 0) { console.warn("CSV Parsing Warnings:", res.errors); } processQuizData(res.data); if (allQuizData.length > 0) { startGame(); } else { elements.loadingDisplay.innerHTML = "<p>Error: No valid quiz data found in CSV.</p>"; } }, error: (err) => { console.error("CSV Parsing Error:", err); elements.loadingDisplay.innerHTML = `<p>Fatal Error Parsing CSV: ${err.message}</p>`; } });
-        } catch (e) { console.error("CSV Fetch Error:", e); elements.loadingDisplay.innerHTML = `<p>Fatal Error Loading CSV: ${e.message}</p>`; }
+        try { const r = await fetch(csvFilePath); if (!r.ok) throw new Error(`CSV Load: ${r.status} ${r.statusText}`); const t = await r.text();
+            Papa.parse(t, { header: true, skipEmptyLines: true,
+                complete: (results) => {
+                    if (results.errors.length > 0) console.warn("CSV Parse Warnings:", results.errors);
+                    processQuizData(results.data);
+                    if (availableLevels.length > 0) startGame();
+                    else elements.loadingDisplay.innerHTML = "<p>Error: No valid quiz data levels found.</p>";
+                },
+                error: (err) => { console.error("CSV Parse Error:", err); elements.loadingDisplay.innerHTML = `<p>Fatal CSV Parse Error: ${err.message}</p>`; }
+            });
+        } catch (e) { console.error("CSV Fetch Error:", e); elements.loadingDisplay.innerHTML = `<p>Fatal CSV Load Error: ${e.message}</p>`; }
     }
 
     function processQuizData(rawData) {
-        const map=new Map(); rawData.forEach(r=>{if(!r['単語']?.trim()||!r['レベル']?.trim()||!r['問題ID']?.trim())return;const id=r['問題ID'].trim();if(!map.has(id))map.set(id,{id,level:parseInt(r['レベル'],10),displayWords:new Set(),answers:new Set(),meanings:new Set(),notes:new Set(),otherSpellingsFromColumn:new Set()});const e=map.get(id);e.displayWords.add(r['単語'].trim());e.answers.add(r['読み方']?.trim()||'');if(r['別解']?.trim())r['別解'].trim().split(/[/／、。・\s]+/).forEach(a=>{if(a)e.answers.add(a.trim());});if(r['意味']?.trim())e.meanings.add(r['意味'].trim());if(r['追記']?.trim())e.notes.add(r['追記'].trim());if(r['別表記']?.trim())e.otherSpellingsFromColumn.add(r['別表記'].trim());});
-        allQuizData=Array.from(map.values()).map(i=>({...i,displayWords:Array.from(i.displayWords),answers:Array.from(i.answers).filter(Boolean),meanings:Array.from(i.meanings).join(' <br> '),notes:Array.from(i.notes).join(' <br> '),otherSpellingsFromColumn:Array.from(i.otherSpellingsFromColumn)}));
-        allQuizData.sort((a,b)=>a.level-b.level||a.id.localeCompare(b.id));
+        const tempQuizDataByLevel = {};
+        rawData.forEach(row => {
+            if (!row['単語']?.trim() || !row['レベル']?.trim() || !row['問題ID']?.trim()) return;
+            const problemId = row['問題ID'].trim();
+            const level = parseInt(row['レベル'], 10);
+            if (isNaN(level)) return; // Skip if level is not a number
+
+            if (!tempQuizDataByLevel[level]) tempQuizDataByLevel[level] = {};
+            
+            if (!tempQuizDataByLevel[level][problemId]) {
+                tempQuizDataByLevel[level][problemId] = {
+                    id: problemId, level: level, displayWords: new Set(), answers: new Set(),
+                    meanings: new Set(), notes: new Set(), otherSpellingsFromColumn: new Set()
+                };
+            }
+            const entry = tempQuizDataByLevel[level][problemId];
+            entry.displayWords.add(row['単語'].trim());
+            entry.answers.add(row['読み方']?.trim() || '');
+            if (row['別解']?.trim()) row['別解'].trim().split(/[/／、。・\s]+/).forEach(a => { if (a) entry.answers.add(a.trim()); });
+            if (row['意味']?.trim()) entry.meanings.add(row['意味'].trim());
+            if (row['追記']?.trim()) entry.notes.add(row['追記'].trim());
+            if (row['別表記']?.trim()) entry.otherSpellingsFromColumn.add(row['別表記'].trim());
+        });
+
+        quizDataByLevel = {};
+        for (const level in tempQuizDataByLevel) {
+            quizDataByLevel[level] = Object.values(tempQuizDataByLevel[level]).map(item => ({
+                ...item,
+                displayWords: Array.from(item.displayWords),
+                answers: Array.from(item.answers).filter(Boolean),
+                meanings: Array.from(item.meanings).join(' <br> '),
+                notes: Array.from(item.notes).join(' <br> '),
+                otherSpellingsFromColumn: Array.from(item.otherSpellingsFromColumn),
+            }));
+        }
+        
+        availableLevels = Object.keys(quizDataByLevel).map(Number).sort((a, b) => a - b);
+        if (availableLevels.length > 0) {
+            maxReachedLevel = availableLevels[availableLevels.length -1];
+        }
+        console.log("Processed Quiz Data by Level:", quizDataByLevel);
+        console.log("Available Levels:", availableLevels);
     }
+    
+    function resetUnaskedQuestionsForLevel(level) {
+        if (quizDataByLevel[level]) {
+            unaskedQuestionsByLevel[level] = [...quizDataByLevel[level]]; // Create a mutable copy
+        } else {
+            unaskedQuestionsByLevel[level] = [];
+        }
+    }
+
 
     // --- Game Logic ---
     function startGame() {
-        currentQuestionIndex=0;score=0;currentProcessedLevel=-1;updateScoreDisplay();elements.gameOverSection.classList.add('hidden');elements.feedbackSection.classList.add('hidden');elements.loadingDisplay.classList.add('hidden');elements.questionSection.classList.remove('hidden');enableGameControls();displayNextQuestion();
+        currentQuestionIndex = 0; // This might not be used in the same way anymore
+        score = 0;
+        currentGameLevel = availableLevels.length > 0 ? availableLevels[0] : 1; // Start at the lowest available level
+        updateScoreDisplay();
+        elements.currentLevelDisplay.textContent = currentGameLevel;
+        elements.gameOverSection.classList.add('hidden');
+        elements.feedbackSection.classList.add('hidden');
+        elements.loadingDisplay.classList.add('hidden');
+        elements.questionSection.classList.remove('hidden');
+        enableGameControls();
+        resetUnaskedQuestionsForLevel(currentGameLevel);
+        displayNextQuestion();
     }
 
     function displayNextQuestion() {
-        if (isChaosModeActive) return; // Chaos mode active, no more questions
-        if (currentQuestionIndex >= allQuizData.length) { showGameOver(); return; }
+        if (isChaosModeActive) return;
+
+        let currentLevelPool = unaskedQuestionsByLevel[currentGameLevel];
+        
+        // If current level pool is exhausted, or doesn't exist, try to find next available level
+        while (!currentLevelPool || currentLevelPool.length === 0) {
+            const currentLevelIndexInAvailable = availableLevels.indexOf(currentGameLevel);
+            if (currentLevelIndexInAvailable !== -1 && currentLevelIndexInAvailable < availableLevels.length - 1) {
+                currentGameLevel = availableLevels[currentLevelIndexInAvailable + 1]; // Move to next actual level from CSV
+                elements.currentLevelDisplay.textContent = currentGameLevel; // Update display
+                resetUnaskedQuestionsForLevel(currentGameLevel);
+                currentLevelPool = unaskedQuestionsByLevel[currentGameLevel];
+            } else { // No more levels with questions or current level was not in availableLevels
+                 if (availableLevels.length > 0 && quizDataByLevel[maxReachedLevel]?.length > 0) {
+                    // All questions from all levels asked, or reached beyond max actual level.
+                    // Default to re-playing questions from the highest actual level if stuck.
+                    currentGameLevel = maxReachedLevel; // Reset to highest actual level for replay
+                    elements.currentLevelDisplay.textContent = currentGameLevel + "+"; // Indicate replay or extension
+                    resetUnaskedQuestionsForLevel(currentGameLevel);
+                    currentLevelPool = unaskedQuestionsByLevel[currentGameLevel];
+                    if (!currentLevelPool || currentLevelPool.length === 0) { // Still no questions, something is wrong
+                        showGameOver("すべての問題を解き終えました！");
+                        return;
+                    }
+                } else {
+                    showGameOver("問題がありません！"); // No questions available at all
+                    return;
+                }
+            }
+        }
+
+
+        const randomIndex = Math.floor(Math.random() * currentLevelPool.length);
+        currentQuestion = currentLevelPool.splice(randomIndex, 1)[0]; // Get and remove question
+
         elements.feedbackSection.classList.add('hidden'); elements.infoDetailsArea.classList.add('hidden'); elements.nextButton.classList.add('hidden');
-        const q = allQuizData[currentQuestionIndex];
-        if (q.level !== currentProcessedLevel) { currentProcessedLevel = q.level; elements.currentLevelDisplay.textContent = currentProcessedLevel; }
-        const word = q.displayWords[Math.floor(Math.random() * q.displayWords.length)];
-        elements.kanjiDisplay.textContent = word;
-        elements.imageContainer.innerHTML = `<img src="${STONE_IMAGE_FILENAME}" alt="Stylized Stone">`; // ALWAYS stone.png
+        
+        const wordToShow = currentQuestion.displayWords[Math.floor(Math.random() * currentQuestion.displayWords.length)];
+        elements.kanjiDisplay.textContent = wordToShow;
+        elements.imageContainer.innerHTML = `<img src="${STONE_IMAGE_FILENAME}" alt="Stylized Stone">`;
         elements.answerInput.value = ''; elements.answerInput.disabled = false; elements.submitButton.disabled = false; elements.answerInput.focus();
     }
 
     function handleSubmit() {
         if(elements.answerInput.disabled && !isChaosModeActive) return;
         const userAnswer = elements.answerInput.value.trim();
-        const currentQuestion = allQuizData[currentQuestionIndex];
+        // currentQuestion should be set by displayNextQuestion
+        if (!currentQuestion) { 
+            console.error("Current question is null in handleSubmit"); 
+            displayNextQuestion(); // Try to recover
+            return; 
+        }
         let isCorrect = false;
 
-        if(!isChaosModeActive){ // Only check answer if not in chaos mode
+        if(!isChaosModeActive){
             const normalizedUserAnswer = normalizeAnswer(userAnswer);
             for(const correctAnswer of currentQuestion.answers){
                 if(normalizeAnswer(correctAnswer) === normalizedUserAnswer){ isCorrect = true; break; }
@@ -149,7 +224,14 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.feedbackMessage.textContent="正解！";
             elements.feedbackMessage.className='message-feedback correct';
             score+=10;
+            currentGameLevel++; // ★ Level up on correct answer ★
+            elements.currentLevelDisplay.textContent = currentGameLevel;
             elements.nextButton.classList.remove('hidden');
+            // Prepare for next level's questions
+            if (!unaskedQuestionsByLevel[currentGameLevel] && availableLevels.includes(currentGameLevel)) {
+                resetUnaskedQuestionsForLevel(currentGameLevel);
+            }
+
         } else {
             elements.feedbackMessage.innerHTML = `不正解！<br><span class="chaos-engage-text">真・無限<span class="emphasis-red">「なんでや」</span>カオス起動</span>`;
             elements.feedbackMessage.className='message-feedback incorrect';
@@ -171,54 +253,60 @@ document.addEventListener('DOMContentLoaded', () => {
         else elements.otherSpellingsContainer.classList.add('hidden');
         
         updateScoreDisplay();
-        if(isCorrect && !isChaosModeActive) currentQuestionIndex++; // Only advance if correct and not in chaos
+        // No currentQuestionIndex++ here, next question is based on new currentGameLevel
     }
     
     function normalizeAnswer(str) { if(!str)return"";return str.normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g,m=>String.fromCharCode(m.charCodeAt(0)-0x60)).replace(/\s+/g,''); }
     function updateScoreDisplay() { elements.currentScoreDisplay.textContent = score; }
-    function showGameOver() { if(isChaosModeActive)return; elements.questionSection.classList.add('hidden');elements.feedbackSection.classList.add('hidden');elements.gameOverSection.classList.remove('hidden');elements.finalScoreDisplay.textContent=score; }
+    
+    function showGameOver(message = "全レベル制覇！ (または問題切れ)") {
+        if(isChaosModeActive)return;
+        elements.questionSection.classList.add('hidden');
+        elements.feedbackSection.classList.add('hidden');
+        elements.gameOverSection.classList.remove('hidden');
+        elements.gameOverSection.querySelector('h2').textContent = message; // Allow custom game over message
+        elements.finalScoreDisplay.textContent=score;
+    }
     
     function disableGameControls() {
-        elements.answerInput.disabled = true;
-        elements.submitButton.disabled = true;
-        elements.nextButton.disabled = true;
-        elements.restartButton.disabled = true;
+        elements.answerInput.disabled = true; elements.submitButton.disabled = true;
+        elements.nextButton.disabled = true; elements.restartButton.disabled = true;
         let overlay = document.getElementById('chaos-active-overlay');
         if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.id = 'chaos-active-overlay';
-            overlay.classList.add('chaos-active-overlay');
-            document.body.appendChild(overlay); // Append to body to ensure it covers everything
+            overlay = document.createElement('div'); overlay.id = 'chaos-active-overlay';
+            overlay.classList.add('chaos-active-overlay'); document.body.appendChild(overlay);
         }
-        overlay.classList.remove('hidden'); // Make sure it's visible
+        overlay.classList.remove('hidden');
     }
     function enableGameControls() {
-        elements.answerInput.disabled=false;elements.submitButton.disabled=false;elements.nextButton.classList.add('hidden');elements.restartButton.disabled=false;
+        elements.answerInput.disabled=false;elements.submitButton.disabled=false;
+        elements.nextButton.classList.add('hidden'); elements.restartButton.disabled=false;
         const overlay = document.getElementById('chaos-active-overlay');
-        if (overlay) overlay.classList.add('hidden'); // Hide instead of remove, to reuse
+        if (overlay) overlay.classList.add('hidden');
     }
 
-    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY ---
+    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY (LIGHTER VERSION) ---
     function activateChaosMode() {
         if (isChaosModeActive) return;
         isChaosModeActive = true;
         disableGameControls();
+        elements.feedbackMessage.innerHTML = `不正解！<br><span class="chaos-engage-text">軽量版<span class="emphasis-red">「なんでや」</span>カオス起動…</span>`;
         
-        triggerNandeyaElementsBatch(100); // ★★★ EVEN MORE MASSIVE initial burst ★★★
+        triggerNandeyaElementsBatch(25); // ★ Reduced initial burst ★
 
         if (chaosIntervalId) clearInterval(chaosIntervalId);
         chaosIntervalId = setInterval(() => {
-            triggerNandeyaElementsBatch(30 + Math.floor(Math.random() * 30)); // Continuously add 30-59 more
-        }, 350); // ★★★ Add new batch every 0.35 seconds - INSANELY AGGRESSIVE ★★★
-        requestAnimationFrame(updatePerformanceMonitor); // Restart FPS counter if it stopped
+            triggerNandeyaElementsBatch(5 + Math.floor(Math.random() * 6)); // ★ Reduced continuous: 5-10 elements ★
+        }, 1200); // ★ Slower interval: every 1.2 seconds ★
+        requestAnimationFrame(updatePerformanceMonitorLoop);
     }
 
     function triggerNandeyaElementsBatch(numElements) {
-        const DURATION_BASE = 20000; // Longer base for extreme stickiness
-        const DURATION_RANDOM_ADD = 15000;
+        const DURATION_BASE = 12000; // Keep long duration for stickiness
+        const DURATION_RANDOM_ADD = 8000;
 
         if (nandeyaPhrases.length === 0) {
-            nandeyaPhrases.push({text: "「なんでや」の準備がまだや！", isEmphasized: true});
+            nandeyaPhrases.push({text: "「なんでや」がないねん！", isEmphasized: true});
         }
 
         for (let i = 0; i < numElements; i++) {
@@ -226,96 +314,92 @@ document.addEventListener('DOMContentLoaded', () => {
             const duration = DURATION_BASE + Math.random() * DURATION_RANDOM_ADD;
             setTimeout(() => {
                 createNandeyaElement(selectedPhraseObj.text, selectedPhraseObj.isEmphasized, duration);
-            }, i * (100 / numElements) ); // Spread out creation over 0.1s for a batch
+            }, i * (300 / numElements) );
         }
     }
 
     function createNandeyaElement(text, isEmphasized, duration) {
         const el = document.createElement('div');
         el.classList.add('flying-element', 'flying-text');
-        flyingElementCount++; // Increment for monitor
+        flyingElementCount++;
 
         if (isEmphasized) {
             el.classList.add('nandeya-emphasis');
-            el.style.fontSize = `${2.2 + Math.random() * 3.3}em`; // 2.2em to 5.5em - VERY LARGE
-            el.style.zIndex = (parseInt(el.style.zIndex || 50000) + 10).toString(); // Emphasized on top of others
+            el.style.fontSize = `${1.8 + Math.random() * 1.2}em`; // Reduced max size: 1.8em to 3.0em
+            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + 5).toString();
         } else {
             el.classList.add('general-rainbow-text');
-            el.style.fontSize = `${1.0 + Math.random() * 1.5}em`; // 1.0em to 2.5em - Readable but varied
+            el.style.fontSize = `${0.9 + Math.random() * 0.8}em`; // Reduced max size: 0.9em to 1.7em
         }
         el.textContent = text;
         
-        const currentHue = (flyingElementHueStart + Math.random() * 220) % 360;
-        flyingElementHueStart = (flyingElementHueStart + 2.5) % 360; // Slower overall shift for more variety
+        const currentHue = (flyingElementHueStart + Math.random() * 180) % 360;
+        flyingElementHueStart = (flyingElementHueStart + 10) % 360; // Slower hue shift for overall palette
 
-        el.style.setProperty('--base-hue', currentHue + 'deg'); // For CSS var use if any
-        el.style.backgroundColor = `hsla(${currentHue}, 90%, ${5 + Math.random()*10}%, ${0.6 + Math.random()*0.3})`;
-        el.style.border = `2px solid hsla(${(currentHue + Math.random()*60 -30) % 360}, 100%, ${55 + Math.random()*25}%, ${0.7 + Math.random()*0.2})`;
-        el.style.color = `hsl(${(currentHue + 180 + Math.random()*60-30) % 360}, 100%, ${80 + Math.random()*10}%)`;
-        el.style.textShadow = `0 0 1px black, 0 0 3px black, 0 0 5px hsla(${(currentHue + 200)%360}, 100%, 60%, 0.9), 0 0 10px hsla(${(currentHue + 200)%360}, 100%, 60%, 0.6)`;
+        el.style.setProperty('--base-hue', currentHue + 'deg');
+        el.style.backgroundColor = `hsla(${currentHue}, 80%, ${10 + Math.random()*15}%, ${0.6 + Math.random()*0.2})`;
+        el.style.border = `2px solid hsla(${(currentHue + 40) % 360}, 90%, ${50 + Math.random()*20}%, ${0.7 + Math.random()*0.1})`;
+        // Text color and shadow are now primarily handled by CSS classes for nandeya-emphasis or general-rainbow-text
 
-        document.body.appendChild(el); // Append to body to fly over everything
+        document.body.appendChild(el); // Append to body
 
         const screenW = window.innerWidth;
         const screenH = window.innerHeight;
-        const elRect = el.getBoundingClientRect(); // Get size after appending and styling
+        const elRect = el.getBoundingClientRect();
         const elW = elRect.width;
         const elH = elRect.height;
 
-        // "ねちっこくハードでこびりつく" - More varied and sticky movements
         const animType = Math.random();
         let keyframes;
-        let animDuration = duration * (0.8 + Math.random() * 1.2); // Vary duration significantly
-        let animEasing = `cubic-bezier(${Math.random()*0.3}, ${0.4 + Math.random()*0.6}, ${0.7 - Math.random()*0.3}, ${Math.random()*0.5 + 0.1})`;
+        let animDuration = duration * (0.7 + Math.random() * 0.6); // Slightly shorter, less variation
+        let animEasing = `cubic-bezier(${Math.random()*0.25 + 0.1}, ${0.5 + Math.random()*0.4}, ${0.65 - Math.random()*0.25}, ${Math.random()*0.4 + 0.2})`;
         let iterations = Infinity;
-        let direction = (Math.random() < 0.4 ? 'alternate' : 'normal');
+        let direction = (Math.random() < 0.35 ? 'alternate' : 'normal');
 
         const startX = Math.random() * screenW - elW / 2;
         const startY = Math.random() * screenH - elH / 2;
         let endX, endY;
 
-        const rotStart = Math.random() * 1080 - 540; // Extreme start rotation
-        let rotEnd = rotStart + (Math.random() > 0.5 ? 1 : -1) * (1080 + Math.random() * 2160); // Extreme end rotation
+        const rotStart = Math.random() * 360 - 180; // Reduced rotation
+        let rotEnd = rotStart + (Math.random() > 0.5 ? 1 : -1) * (360 + Math.random() * 360); // Reduced rotation
 
-        if (animType < 0.15) { // Type 1: Super Slow, "Jittery Sticky" - こびりつく
-            endX = startX + (Math.random() * 60 - 30);
-            endY = startY + (Math.random() * 60 - 30);
-            rotEnd = rotStart + (Math.random() * 90 - 45);
-            animDuration *= (2.5 + Math.random() * 2); // Much slower
-            animEasing = 'steps(10, end)'; // Jittery
-            direction = 'alternate-reverse';
-        } else if (animType < 0.35) { // Type 2: "Edge Drifter" - こびりつく
-            const edge = Math.floor(Math.random() * 4); // 0:top, 1:right, 2:bottom, 3:left
-            if (edge === 0) { endX = Math.random()*screenW; endY = -elH * (0.5 + Math.random()*0.5); } // Drift off top
-            else if (edge === 1) { endX = screenW + elW * (0.5 + Math.random()*0.5); endY = Math.random()*screenH; } // Drift off right
-            else if (edge === 2) { endX = Math.random()*screenW; endY = screenH + elH * (0.5 + Math.random()*0.5); } // Drift off bottom
-            else { endX = -elW * (0.5 + Math.random()*0.5); endY = Math.random()*screenH; } // Drift off left
-            animDuration *= (1.5 + Math.random());
-            rotEnd = rotStart + (Math.random() * 180 - 90);
-        } else { // Type 3: "Hardcore Chaotic" - ハード
-            endX = Math.random() * screenW * 3 - screenW; // Moves far off screen
-            endY = Math.random() * screenH * 3 - screenH;
+        if (animType < 0.2) { // Sticky
+            endX = startX + (Math.random() * 40 - 20); endY = startY + (Math.random() * 40 - 20);
+            rotEnd = rotStart + (Math.random() * 60 - 30); animDuration *= (1.5 + Math.random());
+            animEasing = 'linear'; direction = 'alternate-reverse';
+        } else if (animType < 0.5) { // Edge Drifter
+            const edge = Math.floor(Math.random() * 4);
+            if (edge === 0) { endX = Math.random()*screenW; endY = -elH * (0.3 + Math.random()*0.3); }
+            else if (edge === 1) { endX = screenW + elW * (0.3 + Math.random()*0.3); endY = Math.random()*screenH; }
+            else if (edge === 2) { endX = Math.random()*screenW; endY = screenH + elH * (0.3 + Math.random()*0.3); }
+            else { endX = -elW * (0.3 + Math.random()*0.3); endY = Math.random()*screenH; }
+            animDuration *= (1.2 + Math.random()*0.5);
+            rotEnd = rotStart + (Math.random() * 120 - 60);
+        } else { // Chaotic
+            endX = Math.random() * screenW * 1.8 - screenW * 0.4; // Reduced travel
+            endY = Math.random() * screenH * 1.8 - screenH * 0.4;
         }
         
-        const initialScale = 0.01 + Math.random() * 0.1;
-        const peakScale = isEmphasized ? (1.8 + Math.random() * 1.2) : (1.0 + Math.random() * 0.6);
-        const finalPersistScale = isEmphasized ? (0.7 + Math.random()*0.6) : (0.4 + Math.random()*0.5); // Never fully disappears
+        const initialScale = 0.1 + Math.random() * 0.2;
+        const peakScale = isEmphasized ? (1.2 + Math.random() * 0.5) : (0.8 + Math.random() * 0.4); // Reduced peak scale
+        const finalPersistScale = isEmphasized ? (0.6 + Math.random()*0.3) : (0.4 + Math.random()*0.3);
 
         keyframes = [
-            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(25px) brightness(0.2) saturate(0)', offset: 0 },
-            { transform: `translate(${startX + (endX-startX)*0.05}px, ${startY + (endY-startY)*0.05}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.05}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.3) saturate(1.8)', offset: 0.07 }, // Quick appearance
-            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / 2}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.95, filter: `brightness(1.1) saturate(1.5) hue-rotate(${Math.random()*60-30}deg)`, offset: 0.4 + Math.random()*0.2 }, // Mid-point chaos
-            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.8 + Math.random()*0.2, filter: `brightness(1) saturate(1.2) hue-rotate(${Math.random()*120-60}deg)` } // Persists, does not fade out completely
+            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(10px) brightness(0.5)'},
+            { transform: `translate(${startX + (endX-startX)*0.1}px, ${startY + (endY-startY)*0.1}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.1}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.1)', offset: 0.1 },
+            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / 2}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.9, filter: `brightness(1) hue-rotate(${Math.random()*40-20}deg)`, offset: 0.4 + Math.random()*0.2 },
+            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.75 + Math.random()*0.15, filter: `brightness(0.9) hue-rotate(${Math.random()*80-40}deg)` }
         ];
-        const timing = {
-            duration: animDuration,
-            easing: animEasing,
-            iterations: Infinity, // ★★★ PERPETUAL ANIMATION ★★★
-            direction: direction
-        };
+        const timing = { duration: animDuration, easing: animEasing, iterations: Infinity, direction: direction };
         
-        el.animate(keyframes, timing);
-        // Element is never removed from DOM
+        try {
+            const animation = el.animate(keyframes, timing);
+            // No onfinish to remove element for perpetual effect
+        } catch (e) {
+            console.warn("Animation failed for an element, likely due to extreme parameters or browser limit.", e, el);
+            el.remove(); // Remove if animation setup fails to prevent broken states
+            flyingElementCount--;
+        }
     }
 
     // --- Event Listeners ---
@@ -323,13 +407,12 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.answerInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSubmit(); });
     elements.nextButton.addEventListener('click', displayNextQuestion);
     elements.restartButton.addEventListener('click', () => {
-        if (chaosIntervalId) clearInterval(chaosIntervalId);
-        chaosIntervalId = null;
+        if (chaosIntervalId) clearInterval(chaosIntervalId); chaosIntervalId = null;
         isChaosModeActive = false;
         document.querySelectorAll('.flying-element').forEach(fe => fe.remove());
-        flyingElementCount = 0; // Reset counter
+        flyingElementCount = 0;
         enableGameControls();
-        loadAndProcessCSV(); // Reload and restart game
+        loadAndProcessCSV();
     });
 
     // --- Initialization ---
