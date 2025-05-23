@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>洗練漢字クイズ</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>漢字クイズ</h1>
+            <div id="game-status">
+                <p>レベル: <span id="current-level">1</span></p>
+                <p>スコア: <span id="current-score">0</span></p>
+            </div>
+        </header>
+
+        <main id="quiz-area">
+            <div id="loading-message">データを読み込み中です...</div>
+            <div id="question-container" class="hidden">
+                <div id="image-display"></div>
+                <div id="kanji-display"></div>
+                <input type="text" id="answer-input" placeholder="読み方をひらがなで入力">
+                <button id="submit-button">解答する</button>
+            </div>
+
+            <div id="feedback-area" class="hidden">
+                <p id="feedback-text"></p>
+                <div id="info-area">
+                    <p><strong>意味:</strong> <span id="meaning-text"></span></p>
+                    <p id="notes-container" class="hidden"><strong>追記:</strong> <span id="notes-text"></span></p>
+                    <p id="other-spellings-container" class="hidden"><strong>別表記:</strong> <span id="other-spellings-text"></span></p>
+                </div>
+                <button id="next-button" class="hidden">次の問題へ</button>
+            </div>
+
+            <div id="game-over-area" class="hidden">
+                <h2>ゲームクリア！</h2>
+                <p>最終スコア: <span id="final-score">0</span></p>
+                <button id="restart-button">もう一度挑戦する</button>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 あなたの漢字クイズ</p>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
