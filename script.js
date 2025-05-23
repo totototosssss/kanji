@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let maxCsvLevel = 0;
     const csvFilePath = 'ankiDeck.csv';
     let chaosIntervalId = null;
+    let nandeyaBoostTimeoutId = null; // For the 15-second boost
     let isChaosModeActive = false;
     let flyingElementHueStart = Math.random() * 360;
     let flyingElementCount = 0;
@@ -59,78 +60,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Nandeya Text Processing (Improved "なんでや" handling and general phrase splitting) ---
     function splitNandeyaText() {
-        nandeyaPhrases = [];
-        const fullText = LONG_NANDEYA_TEXT_CONTENT;
-        const emphasisKeyword = "なんでや";
-        const minL = 6; // Min length for a non-emphasized phrase
-        const maxL = 30; // Max length for a non-emphasized phrase
+        nandeyaPhrases = []; const fullText = LONG_NANDEYA_TEXT_CONTENT;
+        const emphasisKeyword = "なんでや"; const minL = 5; const maxL = 28;
+        const sentences = fullText.split(new RegExp(`(${emphasisKeyword}[。、！？　…]*|[^${emphasisKeyword}。、！？　…]*[。、！？　…]+)`, 'g')).filter(Boolean);
 
-        // Split by "なんでや" first, keeping "なんでや" and its surrounding punctuation as emphasized parts
-        const parts = fullText.split(new RegExp(`(${emphasisKeyword}[。、！？　…]*)`, 'g'));
+        sentences.forEach(sentence => {
+            let currentSentence = sentence.trim();
+            if (!currentSentence) return;
 
-        parts.forEach(part => {
-            if (!part || part.trim() === "") return;
+            const containsEmphasis = currentSentence.includes(emphasisKeyword);
 
-            const trimmedPart = part.trim();
-            const containsEmphasis = trimmedPart.startsWith(emphasisKeyword); // Check if the part IS an emphasis phrase
-
-            if (containsEmphasis) {
+            if (containsEmphasis && currentSentence.startsWith(emphasisKeyword)) {
                 // This part is an emphasized phrase (e.g., "なんでや。", "なんでやウィスク")
-                // Ensure it's not excessively long, but keep the core "なんでや"
-                let emphasizedPhrase = trimmedPart;
-                if (emphasizedPhrase.length > maxL + emphasisKeyword.length) { // If it's very long with context
+                let emphasizedPhrase = currentSentence;
+                if (emphasizedPhrase.length > maxL + emphasisKeyword.length) {
                     const nandeyaIndex = emphasizedPhrase.indexOf(emphasisKeyword);
-                    emphasizedPhrase = emphasizedPhrase.substring(
-                        Math.max(0, nandeyaIndex - 5), // Include a bit before
-                        Math.min(emphasizedPhrase.length, nandeyaIndex + emphasisKeyword.length + 10) // And a bit after
-                    ).trim();
+                    emphasizedPhrase = emphasizedPhrase.substring(0, nandeyaIndex + emphasisKeyword.length + Math.floor(Math.random() * 10 + 5)).trim();
                 }
-                 if (emphasizedPhrase.length < minL && emphasizedPhrase !== emphasisKeyword) { // Too short, just use keyword
-                    emphasizedPhrase = emphasisKeyword;
-                }
+                if (emphasizedPhrase.length < minL && emphasizedPhrase !== emphasisKeyword) emphasizedPhrase = emphasisKeyword;
                 nandeyaPhrases.push({ text: emphasizedPhrase, isEmphasized: true });
-            } else {
-                // This part does NOT contain "なんでや" as the start, so treat as normal text to be split
-                let remainingNormalText = trimmedPart;
+            } else { // Normal phrase or part of a sentence not starting with "なんでや"
+                let remainingNormalText = currentSentence;
                 while (remainingNormalText.length > 0) {
                     let phraseLength = Math.floor(Math.random() * (maxL - minL + 1)) + minL;
                     let currentNormalPhrase = remainingNormalText.substring(0, Math.min(phraseLength, remainingNormalText.length));
-                    
-                    // Try to find a natural break (punctuation) within the segment
-                    let cutPoint = -1;
-                    const punctuation = /[。、！？　…]/g;
-                    let match;
-                    while ((match = punctuation.exec(currentNormalPhrase)) !== null) {
-                        if (match.index > minL / 2 && match.index < currentNormalPhrase.length -1) { // Prefer cuts not at the very start/end
-                           cutPoint = match.index;
-                        }
-                    }
-                    if (cutPoint !== -1) {
-                        currentNormalPhrase = currentNormalPhrase.substring(0, cutPoint + 1);
-                    }
+                    let cutPoint = -1; const punctuation = /[。、！？　…]/g; let match;
+                    while ((match = punctuation.exec(currentNormalPhrase)) !== null) { if (match.index > minL / 2 && match.index < currentNormalPhrase.length -1) cutPoint = match.index; }
+                    if (cutPoint !== -1) currentNormalPhrase = currentNormalPhrase.substring(0, cutPoint + 1);
                     
                     const finalNormalPhrase = currentNormalPhrase.trim();
-                    if (finalNormalPhrase) {
-                        nandeyaPhrases.push({ text: finalNormalPhrase, isEmphasized: false });
-                    }
+                    if (finalNormalPhrase) nandeyaPhrases.push({ text: finalNormalPhrase, isEmphasized: finalNormalPhrase.includes(emphasisKeyword) }); // Check again if a sub-phrase contains it
                     remainingNormalText = remainingNormalText.substring(currentNormalPhrase.length).trim();
-                    if (currentNormalPhrase.length === 0 && remainingNormalText.length > 0) { // Safety break
-                         nandeyaPhrases.push({ text: remainingNormalText.substring(0, Math.min(remainingNormalText.length, maxL)), isEmphasized: false });
-                         remainingNormalText = "";
+                    if (currentNormalPhrase.length === 0 && remainingNormalText.length > 0) {
+                        const safetyP = remainingNormalText.substring(0, Math.min(remainingNormalText.length,maxL));
+                        nandeyaPhrases.push({text:safetyP, isEmphasized: safetyP.includes(emphasisKeyword)}); remainingNormalText="";
                     }
                 }
             }
         });
-
-        if (nandeyaPhrases.length === 0 && LONG_NANDEYA_TEXT_CONTENT) { // Fallback
-            const fp = LONG_NANDEYA_TEXT_CONTENT.substring(0, maxL);
-            nandeyaPhrases.push({ text: fp.trim(), isEmphasized: fp.includes(emphasisKeyword) });
-        }
-        // Ensure at least one "なんでや" phrase if the keyword exists in the original text
-        if (LONG_NANDEYA_TEXT_CONTENT.includes(emphasisKeyword) && !nandeyaPhrases.some(p => p.isEmphasized && p.text.includes(emphasisKeyword))) {
-            nandeyaPhrases.push({ text: emphasisKeyword, isEmphasized: true });
-        }
-        console.log("Nandeya Phrases (Revised Split):", nandeyaPhrases);
+        if (nandeyaPhrases.length === 0 && LONG_NANDEYA_TEXT_CONTENT) { const fp = LONG_NANDEYA_TEXT_CONTENT.substring(0,maxL); nandeyaPhrases.push({ text: fp.trim(), isEmphasized: fp.includes(emphasisKeyword) }); }
+        if (LONG_NANDEYA_TEXT_CONTENT.includes(emphasisKeyword) && !nandeyaPhrases.some(p => p.isEmphasized && p.text.includes(emphasisKeyword))) { nandeyaPhrases.push({ text: emphasisKeyword, isEmphasized: true }); }
+        console.log("Nandeya Phrases (Refined Split):", nandeyaPhrases);
     }
 
 
@@ -173,71 +143,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Game Logic ---
     function startGame() {
-        score = 0; currentGameDisplayLevel = 1;
-        if (availableCsvLevels.length > 0 && !availableCsvLevels.includes(1)) { // If level 1 data doesn't exist, start from lowest available
+        score = 0;
+        // Start game display level at 1. If CSV level 1 doesn't exist, use lowest available.
+        currentGameDisplayLevel = 1; 
+        if (availableCsvLevels.length > 0 && !availableCsvLevels.includes(1)) {
             currentGameDisplayLevel = availableCsvLevels[0];
         }
         elements.currentLevelDisplay.textContent = currentGameDisplayLevel;
-        availableCsvLevels.forEach(level => resetUnaskedQuestionsForCsvLevel(level)); // Reset all pools
+        availableCsvLevels.forEach(level => resetUnaskedQuestionsForCsvLevel(level));
         updateScoreDisplay(); elements.gameOverSection.classList.add('hidden'); elements.feedbackSection.classList.add('hidden');
         elements.loadingDisplay.classList.add('hidden'); elements.questionSection.classList.remove('hidden');
         enableGameControls(); displayNextQuestion();
     }
 
     function getActualCsvLevelToQuery(targetDisplayLevel) {
-        let levelToQuery = targetDisplayLevel;
-        if (quizDataByCsvLevel[String(levelToQuery)] && quizDataByCsvLevel[String(levelToQuery)].length > 0) {
-            return levelToQuery; // Exact match found
+        // Try to find the closest CSV level that is <= targetDisplayLevel and has questions
+        // If targetDisplayLevel itself has questions, use it.
+        if (quizDataByCsvLevel[String(targetDisplayLevel)] && quizDataByCsvLevel[String(targetDisplayLevel)].length > 0) {
+             // Make sure its pool is ready or reset if empty
+            if (!unaskedQuestionsByCsvLevel[String(targetDisplayLevel)] || unaskedQuestionsByCsvLevel[String(targetDisplayLevel)].length === 0) {
+                resetUnaskedQuestionsForCsvLevel(targetDisplayLevel);
+            }
+            if (unaskedQuestionsByCsvLevel[String(targetDisplayLevel)].length > 0) return targetDisplayLevel;
         }
-        // Find closest available CSV level <= targetDisplayLevel
-        let closestLower = -1;
-        for (let i = availableCsvLevels.length - 1; i >= 0; i--) {
-            if (availableCsvLevels[i] <= levelToQuery) {
-                closestLower = availableCsvLevels[i]; break;
+
+        // Otherwise, search downwards from targetDisplayLevel for an available CSV level
+        for (let i = targetDisplayLevel; i >= 1; i--) {
+            if (availableCsvLevels.includes(i) && quizDataByCsvLevel[String(i)] && quizDataByCsvLevel[String(i)].length > 0) {
+                 if (!unaskedQuestionsByCsvLevel[String(i)] || unaskedQuestionsByCsvLevel[String(i)].length === 0) {
+                    resetUnaskedQuestionsForCsvLevel(i);
+                 }
+                 if (unaskedQuestionsByCsvLevel[String(i)].length > 0) return i;
             }
         }
-        if (closestLower !== -1) return closestLower;
-        // If nothing found (e.g. target is 1, CSV starts at 5), use lowest available
-        return availableCsvLevels.length > 0 ? availableCsvLevels[0] : -1;
+        // If still nothing found (e.g., targetDisplayLevel is below any available CSV level), use the lowest available CSV level.
+        return availableCsvLevels.length > 0 ? availableCsvLevels[0] : -1; // -1 if no levels at all
     }
+
 
     function displayNextQuestion() {
         if (isChaosModeActive) return;
 
         let actualCsvLevelForQuery = getActualCsvLevelToQuery(currentGameDisplayLevel);
         let csvLevelKey = String(actualCsvLevelForQuery);
-        
-        elements.currentLevelDisplay.textContent = currentGameDisplayLevel; // Base display
-        if (actualCsvLevelForQuery !== currentGameDisplayLevel && actualCsvLevelForQuery !== -1) {
-             elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery})`;
-        }
 
+        elements.currentLevelDisplay.textContent = currentGameDisplayLevel; // Always show the incrementing game display level
+        if (actualCsvLevelForQuery !== -1 && actualCsvLevelForQuery !== currentGameDisplayLevel) {
+            elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery})`;
+        }
 
         if (actualCsvLevelForQuery === -1 || !quizDataByCsvLevel[csvLevelKey]) {
-            showGameOver("適切な問題レベルが見つかりません。"); return;
+            showGameOver("適切な問題レベルが見つかりません。CSVデータを確認してください。"); return;
         }
 
+        // Ensure the pool for the determined CSV level is ready
         if (!unaskedQuestionsByCsvLevel[csvLevelKey] || unaskedQuestionsByCsvLevel[csvLevelKey].length === 0) {
-            resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery); // Refill if empty (allows repeating level)
-            if (unaskedQuestionsByCsvLevel[csvLevelKey].length === 0 && currentGameDisplayLevel > maxCsvLevel) {
-                 // If truly exhausted even after refill and we are beyond max CSV levels
-                 showGameOver("全問題を解き終えたか、問題がありません。"); return;
-            } else if (unaskedQuestionsByCsvLevel[csvLevelKey].length === 0) {
-                // This specific CSV level might be empty from the start, try next actual CSV level
-                const currentIndex = availableCsvLevels.indexOf(actualCsvLevelForQuery);
-                if (currentIndex !== -1 && currentIndex < availableCsvLevels.length - 1) {
-                    actualCsvLevelForQuery = availableCsvLevels[currentIndex + 1];
-                    csvLevelKey = String(actualCsvLevelForQuery);
-                    elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery})`;
-                    resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery);
-                } else {
-                     showGameOver("問題データが完全に枯渇しました。"); return;
-                }
-            }
+            resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery);
         }
         
         let pool = unaskedQuestionsByCsvLevel[csvLevelKey];
-        if (!pool || pool.length === 0) { showGameOver(`レベル ${csvLevelKey} の問題プールが空です。`); return; }
+
+        // If pool is *still* empty (e.g., actualCsvLevel had no questions or was just reset to an empty state)
+        // This indicates a potential issue or truly all questions for this path are exhausted.
+        // As per user: "レベルすぐ探せないと次のレベルにいっていいよ"
+        // This implies we should rapidly try to find *any* available question pool if current one fails.
+        // The getActualCsvLevelToQuery should ideally handle finding a suitable level.
+        // If it returns a level but its pool is empty (e.g. after reset), we might be out of questions for that level.
+        // Let's try to be more robust or default to highest if really stuck.
+        if (!pool || pool.length === 0) {
+            if (maxCsvLevel > 0 && quizDataByCsvLevel[String(maxCsvLevel)]?.length > 0) {
+                 // If stuck, try to get questions from the max available CSV level
+                 console.warn(`Pool for CSV level ${csvLevelKey} (target display ${currentGameDisplayLevel}) is empty. Falling back to max CSV level ${maxCsvLevel}.`);
+                 actualCsvLevelForQuery = maxCsvLevel;
+                 csvLevelKey = String(actualCsvLevelForQuery);
+                 resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery); // Refill for max level
+                 pool = unaskedQuestionsByCsvLevel[csvLevelKey];
+                 elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery} 再)`;
+            }
+            if (!pool || pool.length === 0) { // If still no questions
+                showGameOver("問題データが完全に枯渇しました。"); return;
+            }
+        }
 
         const randomIndex = Math.floor(Math.random() * pool.length);
         currentQuestion = pool.splice(randomIndex, 1)[0];
@@ -252,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleSubmit() {
         if(elements.answerInput.disabled && !isChaosModeActive) return;
         const userAnswer = elements.answerInput.value.trim();
-        if (!currentQuestion) { console.error("No current question!"); displayNextQuestion(); return; }
+        if (!currentQuestion) { console.error("No current question for submit!"); displayNextQuestion(); return; }
         let isCorrect = false;
 
         if(!isChaosModeActive){
@@ -265,11 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if(isCorrect){
             elements.feedbackMessage.textContent="正解！"; elements.feedbackMessage.className='message-feedback correct';
             score+=10;
-            currentGameDisplayLevel++;
-            elements.currentLevelDisplay.textContent = currentGameDisplayLevel;
+            currentGameDisplayLevel++; // ★ Display Level up on correct answer ★
+            elements.currentLevelDisplay.textContent = currentGameDisplayLevel; // Update display level directly
             elements.nextButton.classList.remove('hidden');
         } else {
-            elements.feedbackMessage.innerHTML = `不正解ッ！！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">無限</span>カオス顕現</span>`;
+            elements.feedbackMessage.innerHTML = `不正解ッ！！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">15秒後</span>ブーストカオス</span>`;
             elements.feedbackMessage.className='message-feedback incorrect';
             const correctAnswersText = currentQuestion.answers.join(' ／ ');
             elements.feedbackMessage.innerHTML += ` <span style="font-size:0.6em; color: var(--dim-text);">(正解: ${correctAnswersText})</span>`;
@@ -292,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function normalizeAnswer(str) { if(!str)return"";return str.normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g,m=>String.fromCharCode(m.charCodeAt(0)-0x60)).replace(/\s+/g,''); }
     function updateScoreDisplay() { elements.currentScoreDisplay.textContent = score; }
     function showGameOver(message = "ゲームオーバー") {
-        if(isChaosModeActive)return; // No game over screen if chaos is on
+        if(isChaosModeActive)return;
         elements.questionSection.classList.add('hidden'); elements.feedbackSection.classList.add('hidden');
         elements.gameOverSection.classList.remove('hidden');
         elements.gameOverSection.querySelector('h2').textContent = message;
@@ -316,49 +302,71 @@ document.addEventListener('DOMContentLoaded', () => {
         if (overlay) overlay.classList.add('hidden');
     }
 
-    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY (Adjusted for phrase balance) ---
+    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY ---
     function activateChaosMode() {
         if (isChaosModeActive) return; isChaosModeActive = true;
         disableGameControls();
-        elements.feedbackMessage.innerHTML = `不正解…！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">永久</span>ループ開始！</span>`;
+        elements.feedbackMessage.innerHTML = `不正解…！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">永久</span>カオス開始！</span>`;
         
-        triggerNandeyaElementsBatch(40); // ★ Initial burst: 40 (moderate) ★
+        triggerNandeyaElementsBatch(30); // Initial burst: 30 (balanced)
 
         if (chaosIntervalId) clearInterval(chaosIntervalId);
         chaosIntervalId = setInterval(() => {
-            triggerNandeyaElementsBatch(12 + Math.floor(Math.random() * 14)); // ★ Continuous: 12-25 elements ★
-        }, 700); // ★ Interval: every 0.7 seconds (slightly less aggressive) ★
+            triggerNandeyaElementsBatch(10 + Math.floor(Math.random() * 11)); // Continuous: 10-20 elements
+        }, 850); // Interval: every 0.85 seconds
+
+        // ★ Nandeya Boost after 15 seconds ★
+        if (nandeyaBoostTimeoutId) clearTimeout(nandeyaBoostTimeoutId); // Clear previous if any
+        nandeyaBoostTimeoutId = setTimeout(() => {
+            if (isChaosModeActive) { // Only boost if chaos is still active
+                console.log("Executing 15-second Nandeya Boost!");
+                elements.feedbackMessage.innerHTML += `<br><span style="color:var(--tertiary-accent); animation: pulseCorrect 1s infinite;">「なんでや」ブーストタイム！！！</span>`;
+                triggerNandeyaElementsBatch(30 + Math.floor(Math.random() * 21), true); // Add 30-50 EXCLUSIVELY emphasized Nandeya phrases
+            }
+        }, 15000); // 15 seconds
+
         requestAnimationFrame(updatePerformanceMonitorLoop);
     }
 
-    function triggerNandeyaElementsBatch(numElements) {
-        const DURATION_BASE = 16000; // Stickiness: long duration
-        const DURATION_RANDOM_ADD = 12000;
+    // Added an optional parameter 'emphasizedOnly' for the boost
+    function triggerNandeyaElementsBatch(numElements, emphasizedOnly = false) {
+        const DURATION_BASE = 15000;
+        const DURATION_RANDOM_ADD = 10000;
 
-        if (nandeyaPhrases.length === 0) nandeyaPhrases.push({text: "「なんでや」データなし！なんでや！", isEmphasized: true});
+        if (nandeyaPhrases.length === 0) nandeyaPhrases.push({text: "「なんでや」がないとは何でや！", isEmphasized: true});
         
-        const emphasizedPhrases = nandeyaPhrases.filter(p => p.isEmphasized);
-        const normalPhrases = nandeyaPhrases.filter(p => !p.isEmphasized);
+        const phrasesToUse = emphasizedOnly ? nandeyaPhrases.filter(p => p.isEmphasized) : nandeyaPhrases;
+        if (phrasesToUse.length === 0) { // Fallback if no suitable phrases (e.g., emphasizedOnly but no emphasized phrases)
+            console.warn("No suitable phrases for batch, using fallback.");
+            phrasesToUse.push({text: emphasizedOnly ? "なんでやブースト失敗！？" : "フレーズ枯渇…なんでや", isEmphasized: true});
+        }
+
+
+        const emphasizedAvailable = nandeyaPhrases.filter(p => p.isEmphasized);
+        const normalAvailable = nandeyaPhrases.filter(p => !p.isEmphasized);
 
         for (let i = 0; i < numElements; i++) {
             let selectedPhraseObj;
-            // ★ Adjust emphasis ratio: e.g., 40% chance for emphasized if available, otherwise fill with normal ★
-            const emphasizeRoll = Math.random();
-            if (emphasizedPhrases.length > 0 && (emphasizeRoll < 0.4 || normalPhrases.length === 0)) {
-                selectedPhraseObj = emphasizedPhrases[Math.floor(Math.random() * emphasizedPhrases.length)];
-            } else if (normalPhrases.length > 0) {
-                selectedPhraseObj = normalPhrases[Math.floor(Math.random() * normalPhrases.length)];
-            } else if (emphasizedPhrases.length > 0) { // Fallback to emphasized if normal is exhausted
-                selectedPhraseObj = emphasizedPhrases[Math.floor(Math.random() * emphasizedPhrases.length)];
-            }
-             else { // Ultimate fallback
-                selectedPhraseObj = {text: "…なんでや…", isEmphasized: true};
+            if (emphasizedOnly && emphasizedAvailable.length > 0) {
+                selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
+            } else { // Normal batch generation logic (balancing emphasized and normal)
+                const emphasizeRoll = Math.random();
+                // ★ "なんでや" 強調フレーズの出現率 約45% ★
+                if (emphasizedAvailable.length > 0 && (emphasizeRoll < 0.45 || normalAvailable.length === 0)) {
+                    selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
+                } else if (normalAvailable.length > 0) {
+                    selectedPhraseObj = normalAvailable[Math.floor(Math.random() * normalAvailable.length)];
+                } else if (emphasizedAvailable.length > 0) {
+                    selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
+                } else {
+                    selectedPhraseObj = {text: "…なんでや…何故だ…", isEmphasized: true}; // Ultimate fallback
+                }
             }
 
             const duration = DURATION_BASE + Math.random() * DURATION_RANDOM_ADD;
             setTimeout(() => {
                 createNandeyaElement(selectedPhraseObj.text, selectedPhraseObj.isEmphasized, duration);
-            }, i * (150 / numElements) ); // Stagger slightly
+            }, i * (180 / numElements) ); // Stagger slightly
         }
     }
 
@@ -369,28 +377,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isEmphasized) {
             el.classList.add('nandeya-emphasis');
-            el.style.fontSize = `${2.2 + Math.random() * 2.3}em`; // Emphasized: 2.2em to 4.5em (slightly reduced max)
-            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + 15).toString();
+            el.style.fontSize = `${2.3 + Math.random() * 2.7}em`; // Emphasized: 2.3em to 5.0em
+            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + Math.floor(10 + Math.random()*10)).toString(); // Higher z-index for emphasis
         } else {
             el.classList.add('general-rainbow-text');
-            // ★ Ensure normal phrases are also clearly visible ★
-            el.style.fontSize = `${1.2 + Math.random() * 1.1}em`; // Normal: 1.2em to 2.3em (increased min and overall)
+            el.style.fontSize = `${1.1 + Math.random() * 1.3}em`; // Normal: 1.1em to 2.4em
         }
         el.textContent = text;
         
-        const currentHue = (flyingElementHueStart + Math.random() * 160) % 360;
-        flyingElementHueStart = (flyingElementHueStart + 6) % 360;
+        const currentHue = (flyingElementHueStart + Math.random() * 170) % 360;
+        flyingElementHueStart = (flyingElementHueStart + 5) % 360;
 
-        el.style.setProperty('--base-hue', currentHue + 'deg'); // For potential CSS var use
-        el.style.backgroundColor = `hsla(${currentHue}, 88%, ${10 + Math.random()*10}%, ${0.68 + Math.random()*0.22})`;
-        el.style.border = `2px solid hsla(${(currentHue + Math.random()*50 -25) % 360}, 98%, ${52 + Math.random()*20}%, ${0.78 + Math.random()*0.15})`;
+        el.style.setProperty('--base-hue', currentHue + 'deg');
+        el.style.backgroundColor = `hsla(${currentHue}, 90%, ${8 + Math.random()*10}%, ${0.72 + Math.random()*0.2})`;
+        el.style.border = `2px solid hsla(${(currentHue + Math.random()*40 -20) % 360}, 100%, ${50 + Math.random()*20}%, ${0.82 + Math.random()*0.15})`;
         
-        if (!isEmphasized) { // Style for normal phrases
-            el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 85%)`;
-            el.style.textShadow = `0 0 1.5px black, 0 0 3px black, 0 0 5px hsla(${(currentHue + 190)%360}, 100%, 60%, 0.75)`;
-        } // Emphasized text color/shadow is primarily handled by its CSS class
+        if (!isEmphasized) {
+            el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 86%)`;
+            el.style.textShadow = `0 0 1.5px black, 0 0 3.5px black, 0 0 6px hsla(${(currentHue + 190)%360}, 100%, 62%, 0.8)`;
+        }
 
         document.body.appendChild(el);
 
         const screenW = window.innerWidth; const screenH = window.innerHeight;
-        const elRect = el.getBoundingClientRect(); const elW = elRect
+        const elRect = el.getBoundingClientRect(); const elW = elRect.width; const elH = elRect.height;
+
+        const animType = Math.random(); let keyframes;
+        let animDuration = duration * (0.78 + Math.random() * 0.45);
+        let animEasing = `cubic-bezier(${Math.random()*0.3}, ${0.4 + Math.random()*0.55}, ${0.75 - Math.random()*0.3}, ${Math.random()*0.5 + 0.1})`;
+        let iterations = Infinity; let direction = (Math.random() < 0.4 ? 'alternate-reverse' : 'normal');
+
+        const startX = Math.random() * screenW - elW / 2;
+        const startY = Math.random() * screenH - elH / 2;
+        let endX, endY;
+
+        const rotStart = Math.random() * 660 - 330;
+        let rotEnd = rotStart + (Math.random() > 0.5 ? 1 : -1) * (660 + Math.random() * 800);
+
+        if (animType < 0.11) { // Super Sticky
+            endX = startX + (Math.random() * 22 - 11); endY = startY + (Math.random() * 22 - 11);
+            rotEnd = rotStart + (Math.random() * 25 - 12.5); animDuration *= (1.9 + Math.random()*1.1);
+            animEasing = 'steps(3, start)'; direction = 'alternate';
+        } else if (animType < 0.38) { // Edge Loiterer
+            const edge = Math.floor(Math.random() * 4);
+            if(edge === 0) { endX = Math.random()*screenW; endY = Math.random()*elH*0.3 - elH*0.15; }
+            else if (edge === 1) { endX = screenW - Math.random()*elW*0.3 + elW*0.15; endY = Math.random()*screenH; }
+            else if (edge === 2) { endX = Math.random()*screenW; endY = screenH - Math.random()*elH*0.3 + elH*0.15; }
+            else { endX = Math.random()*elW*0.3 - elW*0.15; endY = Math.random()*screenH; }
+            animDuration *= (1.35 + Math.random()*0.7); rotEnd = rotStart + (Math.random() * 50 - 25);
+        } else { // Dynamic Chaos
+            endX = Math.random() * screenW * 1.9 - screenW * 0.45;
+            endY = Math.random() * screenH * 1.9 - screenH * 0.45;
+        }
+        
+        const initialScale = 0.18 + Math.random() * 0.22;
+        const peakScale = isEmphasized ? (1.5 + Math.random() * 0.75) : (0.95 + Math.random() * 0.45);
+        const finalPersistScale = isEmphasized ? (0.78 + Math.random()*0.4) : (0.52 + Math.random()*0.32);
+
+        keyframes = [
+            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(14px) brightness(0.4)'},
+            { transform: `translate(${startX + (endX-startX)*0.08}px, ${startY + (endY-startY)*0.08}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.08}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.18) saturate(1.7)', offset: 0.09 },
+            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / (isEmphasized?1.65:2.05)}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.96, filter: `brightness(1.02) saturate(1.35) hue-rotate(${Math.random()*22-11}deg)`, offset: 0.38 + Math.random()*0.22 },
+            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.9 + Math.random()*0.1, filter: `brightness(0.92) saturate(1.18) hue-rotate(${Math.random()*44-22}deg)` }
+        ];
+        const timing = { duration: animDuration, easing: animEasing, iterations: Infinity, direction: direction };
+        
+        try { el.animate(keyframes, timing); }
+        catch (e) { console.warn("Anim fail:", e, el); el.remove(); flyingElementCount--; }
+    }
+
+    // --- Event Listeners & Initialization ---
+    elements.submitButton.addEventListener('click', handleSubmit);
+    elements.answerInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSubmit(); });
+    elements.nextButton.addEventListener('click', displayNextQuestion);
+    elements.restartButton.addEventListener('click', () => {
+        if (chaosIntervalId) clearInterval(chaosIntervalId); chaosIntervalId = null;
+        if (nandeyaBoostTimeoutId) clearTimeout(nandeyaBoostTimeoutId); nandeyaBoostTimeoutId = null;
+        isChaosModeActive = false;
+        document.querySelectorAll('.flying-element').forEach(fe => fe.remove());
+        flyingElementCount = 0;
+        enableGameControls();
+        loadAndProcessCSV();
+    });
+    splitNandeyaText();
+    loadAndProcessCSV();
+});
