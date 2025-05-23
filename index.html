@@ -3,48 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>洗練漢字クイズ・極</title> <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Orbitron:wght@700&display=swap" rel="stylesheet"> </head>
+    <title>漢字クイズNEO</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Roboto:wght@300;400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+</head>
 <body>
     <div class="container">
         <header>
-            <h1>漢字クイズ・極</h1>
-            <div id="game-status">
-                <p>レベル: <span id="current-level">1</span></p>
-                <p>スコア: <span id="current-score">0</span></p>
+            <h1 class="main-title"><span>KANJI</span> QUIZ <span>NEO</span></h1>
+            <div id="game-status" class="game-status-bar">
+                <p>LEVEL: <span id="current-level">1</span></p>
+                <p>SCORE: <span id="current-score">0</span></p>
             </div>
         </header>
 
-        <main id="quiz-area">
-            <div id="loading-area"> <div class="spinner"></div>
-                <p>データを読み込み中です...</p>
-            </div>
-            <div id="question-container" class="hidden">
-                <div id="image-display"></div>
-                <div id="kanji-display"></div>
-                <input type="text" id="answer-input" placeholder="読み方をひらがなで入力">
-                <button id="submit-button">解答する</button>
+        <main id="quiz-area" class="quiz-main-area">
+            <div id="loading-display" class="loading-overlay">
+                <div class="spinner"></div>
+                <p class="loading-text">データをロード中...</p>
             </div>
 
-            <div id="feedback-area" class="hidden">
-                <p id="feedback-text"></p>
-                <div id="info-area">
-                    <p><strong>意味:</strong> <span id="meaning-text"></span></p>
-                    <p id="notes-container" class="hidden"><strong>追記:</strong> <span id="notes-text"></span></p>
-                    <p id="other-spellings-container" class="hidden"><strong>別表記:</strong> <span id="other-spellings-text"></span></p>
+            <div id="question-section" class="question-display-section hidden">
+                <div id="image-container" class="image-viewer"></div>
+                <div id="kanji-character-display" class="kanji-viewer"></div>
+                <input type="text" id="answer-input-field" class="answer-field" placeholder="読み仮名を入力 (ひらがな)">
+                <button id="submit-answer-button" class="action-button submit-btn">解答</button>
+            </div>
+
+            <div id="feedback-section" class="feedback-display-section hidden">
+                <p id="feedback-message" class="message-feedback"></p>
+                <div id="info-details-area" class="details-info">
+                    <p><strong>意味:</strong> <span id="meaning-text-content"></span></p>
+                    <p id="notes-info-container" class="hidden"><strong>追記:</strong> <span id="notes-text-content"></span></p>
+                    <p id="other-spellings-info-container" class="hidden"><strong>別表記:</strong> <span id="other-spellings-text-content"></span></p>
                 </div>
-                <button id="next-button" class="hidden">次の問題へ</button>
+                <button id="next-question-button" class="action-button next-btn hidden">次の問題</button>
             </div>
 
-            <div id="game-over-area" class="hidden">
-                <h2>ゲームクリア！</h2>
-                <p>最終スコア: <span id="final-score">0</span></p>
-                <button id="restart-button">もう一度挑戦する</button>
+            <div id="game-over-section" class="game-result-section hidden">
+                <h2 class="result-title">ゲームオーバー</h2>
+                <p class="final-score-display">最終スコア: <span id="final-score-value">0</span></p>
+                <button id="restart-game-button" class="action-button restart-btn">再挑戦</button>
             </div>
         </main>
 
-        <footer>
-            <p>&copy; 2025 超絶漢字クイズ</p>
+        <footer class="page-footer">
+            <p>&copy; 2025 KANJI QUIZ NEO</p>
         </footer>
     </div>
 
