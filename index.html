@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>漢字クイズNEO - エンドレスペイン</title> <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Roboto:wght@300;400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <title>漢字クイズNEO - なんでやカオス</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Orbitron:wght@700;900&family=Roboto:wght@300;400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1 class="main-title"><span>KANJI</span> QUIZ <span>NEO</span></h1>
+            <h1 class="main-title"><span>KANJI</span> QUIZ <span class="neo-text">NEO</span></h1>
             <div id="game-status" class="game-status-bar">
                 <p>LEVEL: <span id="current-level">1</span></p>
                 <p>SCORE: <span id="current-score">0</span></p>
@@ -19,7 +20,7 @@
         <main id="quiz-area" class="quiz-main-area">
             <div id="loading-display" class="loading-overlay">
                 <div class="spinner"></div>
-                <p class="loading-text">データをロード中...</p>
+                <p class="loading-text">データロード中...</p>
             </div>
 
             <div id="question-section" class="question-display-section hidden">
@@ -27,7 +28,7 @@
                     </div>
                 <div id="kanji-character-display" class="kanji-viewer"></div>
                 <input type="text" id="answer-input-field" class="answer-field" placeholder="読み仮名を入力 (ひらがな)">
-                <button id="submit-answer-button" class="action-button submit-btn">解答</button>
+                <button id="submit-answer-button" class="action-button submit-btn"><span>解答</span></button>
             </div>
 
             <div id="feedback-section" class="feedback-display-section hidden">
@@ -37,17 +38,18 @@
                     <p id="notes-info-container" class="hidden"><strong>追記:</strong> <span id="notes-text-content"></span></p>
                     <p id="other-spellings-info-container" class="hidden"><strong>別表記:</strong> <span id="other-spellings-text-content"></span></p>
                 </div>
-                <button id="next-question-button" class="action-button next-btn hidden">次の問題</button>
+                <button id="next-question-button" class="action-button next-btn hidden"><span>次の問題</span></button>
             </div>
 
             <div id="game-over-section" class="game-result-section hidden">
-                <h2 class="result-title">ゲームオーバー</h2> <p class="final-score-display">最終スコア: <span id="final-score-value">0</span></p>
-                <button id="restart-game-button" class="action-button restart-btn">再挑戦 ?</button>
+                <h2 class="result-title">終焉</h2>
+                <p class="final-score-display">最終スコア: <span id="final-score-value">0</span></p>
+                <button id="restart-game-button" class="action-button restart-btn"><span>再起動シーケンス</span></button>
             </div>
         </main>
 
         <footer class="page-footer">
-            <p>&copy; 2025 KANJI QUIZ NEO - ENDLESS PAIN</p>
+            <p>&copy; 2025 KANJI QUIZ NEO - NANDEYA CHAOS EDITION</p>
         </footer>
     </div>
 
