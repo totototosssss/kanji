@@ -1,11 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- Game Configuration & User Text ---
     const LONG_NANDEYA_TEXT_CONTENT = '相当偏差値の高い高校（身の丈に合ってない）に通っています。高三なのですが未だにアルファベットが読めないことやadhdっぽいことに悩んで親に土下座してwais受けさせてもらいました。知覚推理144言語理解142ワーキングメモリ130処理速度84でした。　総合は覚えてないですが多分139とかだったはずです。ウィスクの年齢なのにウェイス受けさせられた。なんでや';
-    let nandeyaPhrases = []; // Will be array of objects: { text: "phrase", isEmphasized: boolean }
-    const STONE_IMAGE_FILENAME = 'stone.png';
+    let nandeyaPhrases = []; // Array of objects: { text: "phrase", isEmphasized: boolean }
+    const STONE_IMAGE_FILENAME = 'stone.png'; // All images will be this
 
-    // --- HTML Element Cache ---
+    // --- HTML Element Cache & Validation ---
     const elements = {
+        performanceMonitor: document.getElementById('performance-monitor'), // For FPS and element count
         loadingDisplay: document.getElementById('loading-display'),
         questionSection: document.getElementById('question-section'),
         kanjiDisplay: document.getElementById('kanji-character-display'),
@@ -27,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentScoreDisplay: document.getElementById('current-score'),
         finalScoreDisplay: document.getElementById('final-score-value')
     };
-    for (const key in elements) { if (!elements[key]) { const e=`初期化エラー: UI '${key}' 無。HTML確認。`; console.error(e); if(document.body)document.body.innerHTML=`<p style="color:red;font-size:22px;padding:25px;">${e}</p>`; return; }}
+    for (const key in elements) { if (!elements[key]) { const e=`FATAL ERROR: UI Element '${key}' not found. Check HTML IDs.`; console.error(e); if(document.body)document.body.innerHTML=`<p style="color:red;font-size:24px;padding:30px; text-align:center;">${e}</p>`; return; }}
 
     // --- Game State & Chaos Control ---
     let allQuizData = [];
@@ -38,49 +39,75 @@ document.addEventListener('DOMContentLoaded', () => {
     let chaosIntervalId = null;
     let isChaosModeActive = false;
     let flyingElementHueStart = Math.random() * 360;
+    let flyingElementCount = 0; // For performance monitor
+
+    // --- Performance Monitor (Simple FPS and Element Count) ---
+    let lastFrameTime = performance.now();
+    let frameCount = 0;
+    function updatePerformanceMonitor() {
+        frameCount++;
+        const now = performance.now();
+        if (now - lastFrameTime >= 1000) {
+            const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
+            elements.performanceMonitor.textContent = `FPS: ${fps} | Elements: ${flyingElementCount}`;
+            frameCount = 0;
+            lastFrameTime = now;
+        }
+        if (isChaosModeActive || document.querySelectorAll('.flying-element').length > 0) { // Only request if active elements
+            requestAnimationFrame(updatePerformanceMonitor);
+        }
+    }
+    requestAnimationFrame(updatePerformanceMonitor); // Start monitoring
+
 
     // --- Nandeya Text Processing (with emphasis flag) ---
     function splitNandeyaText() {
-        const minL = 5; const maxL = 28; let txt = LONG_NANDEYA_TEXT_CONTENT; nandeyaPhrases = [];
+        const minL = 6; const maxL = 30; let txt = LONG_NANDEYA_TEXT_CONTENT; nandeyaPhrases = [];
         const emphasisKeyword = "なんでや";
+        const emphasisRegex = new RegExp(emphasisKeyword, "g");
+
         while (txt.length > 0) {
             let len = Math.floor(Math.random() * (maxL - minL + 1)) + minL;
             let p = txt.substring(0, Math.min(len, txt.length));
             let cut = -1;
-            ['。', '、', ' ', '　', '！', '？', '（', '）', ')', '(', '「', '」', '・'].forEach(char => { let i = p.lastIndexOf(char); if (i > p.length / 3 && i > cut) cut = i; });
+            ['。', '、', ' ', '　', '！', '？', '（', '）', ')', '(', '「', '」', '・', '…'].forEach(char => {
+                let i = p.lastIndexOf(char);
+                if (i > p.length / 2.5 && i > cut) cut = i; // Prefer cuts towards end
+            });
+
             if (cut !== -1 && txt.length > cut + 1) p = txt.substring(0, cut + 1);
-            else if (txt.length <= maxL * 1.2) p = txt; // If short remaining, take all
+            else if (txt.length <= maxL * 1.3) p = txt;
             
             const trimmedPhrase = p.trim();
             if (trimmedPhrase) {
                 nandeyaPhrases.push({
                     text: trimmedPhrase,
-                    isEmphasized: trimmedPhrase.includes(emphasisKeyword)
+                    isEmphasized: emphasisRegex.test(trimmedPhrase) // Check if "なんでや" is present
                 });
             }
             txt = txt.substring(p.length);
-            if (p.length === 0 && txt.length > 0) { // Safety break for infinite loop
+            if (p.length === 0 && txt.length > 0) {
                 const safetyPhrase = txt.substring(0, Math.min(txt.length, maxL));
-                nandeyaPhrases.push({ text: safetyPhrase.trim(), isEmphasized: safetyPhrase.includes(emphasisKeyword) });
-                txt = "";
+                nandeyaPhrases.push({ text: safetyPhrase.trim(), isEmphasized: emphasisRegex.test(safetyPhrase) });
+                txt = ""; // Break infinite loop
             }
         }
-        if (nandeyaPhrases.length === 0 && LONG_NANDEYA_TEXT_CONTENT) {
+        if (nandeyaPhrases.length === 0 && LONG_NANDEYA_TEXT_CONTENT) { // Fallback
             const fallbackPhrase = LONG_NANDEYA_TEXT_CONTENT.substring(0, maxL);
-            nandeyaPhrases.push({ text: fallbackPhrase.trim(), isEmphasized: fallbackPhrase.includes(emphasisKeyword) });
+            nandeyaPhrases.push({ text: fallbackPhrase.trim(), isEmphasized: emphasisRegex.test(fallbackPhrase) });
         }
     }
 
     // --- Data Loading & Processing ---
     async function loadAndProcessCSV() {
         elements.loadingDisplay.classList.remove('hidden'); elements.questionSection.classList.add('hidden'); elements.feedbackSection.classList.add('hidden'); elements.gameOverSection.classList.add('hidden');
-        try { const r = await fetch(csvFilePath); if (!r.ok) throw new Error(`CSV (${r.status} ${r.statusText})`); const t = await r.text();
-            Papa.parse(t, { header: true, skipEmptyLines: true, complete: (res) => { if (res.errors.length > 0) console.warn("CSV軽微エラー:", res.errors); processQuizData(res.data); if (allQuizData.length > 0) startGame(); else elements.loadingDisplay.innerHTML = "<p>有効クイズデータ無</p>"; }, error: (err) => { console.error("CSVパースエラー:", err); elements.loadingDisplay.innerHTML = `<p>データ解析失敗: ${err.message}</p>`; } });
-        } catch (e) { console.error("CSV読込エラー:", e); elements.loadingDisplay.innerHTML = `<p>データ読込失敗: ${e.message}</p>`; }
+        try { const r = await fetch(csvFilePath); if (!r.ok) throw new Error(`CSV File Load Error: ${r.status} ${r.statusText}`); const t = await r.text();
+            Papa.parse(t, { header: true, skipEmptyLines: true, complete: (res) => { if (res.errors.length > 0) { console.warn("CSV Parsing Warnings:", res.errors); } processQuizData(res.data); if (allQuizData.length > 0) { startGame(); } else { elements.loadingDisplay.innerHTML = "<p>Error: No valid quiz data found in CSV.</p>"; } }, error: (err) => { console.error("CSV Parsing Error:", err); elements.loadingDisplay.innerHTML = `<p>Fatal Error Parsing CSV: ${err.message}</p>`; } });
+        } catch (e) { console.error("CSV Fetch Error:", e); elements.loadingDisplay.innerHTML = `<p>Fatal Error Loading CSV: ${e.message}</p>`; }
     }
 
     function processQuizData(rawData) {
-        const map=new Map(); rawData.forEach(r=>{if(!r['単語']?.trim()||!r['レベル']?.trim()||!r['問題ID']?.trim())return;const id=r['問題ID'].trim();if(!map.has(id))map.set(id,{id,level:parseInt(r['レベル'],10),displayWords:new Set(),answers:new Set(),meanings:new Set(),notes:new Set(),otherSpellingsFromColumn:new Set()});const e=map.get(id);e.displayWords.add(r['単語'].trim());e.answers.add(r['読み方']?.trim()||'');if(r['別解']?.trim())r['別解'].trim().split(/[/／、。・\s]+/).forEach(a=>{if(a)e.answers.add(a.trim());});if(r['意味']?.trim())e.meanings.add(r['意味'].trim());if(r['追記']?.trim())e.notes.add(r['追記'].trim());if(r['別表記']?.trim())e.otherSpellingsFromColumn.add(r['別表記'].trim());}); // Removed image processing from CSV
+        const map=new Map(); rawData.forEach(r=>{if(!r['単語']?.trim()||!r['レベル']?.trim()||!r['問題ID']?.trim())return;const id=r['問題ID'].trim();if(!map.has(id))map.set(id,{id,level:parseInt(r['レベル'],10),displayWords:new Set(),answers:new Set(),meanings:new Set(),notes:new Set(),otherSpellingsFromColumn:new Set()});const e=map.get(id);e.displayWords.add(r['単語'].trim());e.answers.add(r['読み方']?.trim()||'');if(r['別解']?.trim())r['別解'].trim().split(/[/／、。・\s]+/).forEach(a=>{if(a)e.answers.add(a.trim());});if(r['意味']?.trim())e.meanings.add(r['意味'].trim());if(r['追記']?.trim())e.notes.add(r['追記'].trim());if(r['別表記']?.trim())e.otherSpellingsFromColumn.add(r['別表記'].trim());});
         allQuizData=Array.from(map.values()).map(i=>({...i,displayWords:Array.from(i.displayWords),answers:Array.from(i.answers).filter(Boolean),meanings:Array.from(i.meanings).join(' <br> '),notes:Array.from(i.notes).join(' <br> '),otherSpellingsFromColumn:Array.from(i.otherSpellingsFromColumn)}));
         allQuizData.sort((a,b)=>a.level-b.level||a.id.localeCompare(b.id));
     }
@@ -91,14 +118,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayNextQuestion() {
-        if (isChaosModeActive) return;
+        if (isChaosModeActive) return; // Chaos mode active, no more questions
         if (currentQuestionIndex >= allQuizData.length) { showGameOver(); return; }
         elements.feedbackSection.classList.add('hidden'); elements.infoDetailsArea.classList.add('hidden'); elements.nextButton.classList.add('hidden');
         const q = allQuizData[currentQuestionIndex];
         if (q.level !== currentProcessedLevel) { currentProcessedLevel = q.level; elements.currentLevelDisplay.textContent = currentProcessedLevel; }
         const word = q.displayWords[Math.floor(Math.random() * q.displayWords.length)];
         elements.kanjiDisplay.textContent = word;
-        elements.imageContainer.innerHTML = `<img src="${STONE_IMAGE_FILENAME}" alt="Stone Image">`; // Always stone.png
+        elements.imageContainer.innerHTML = `<img src="${STONE_IMAGE_FILENAME}" alt="Stylized Stone">`; // ALWAYS stone.png
         elements.answerInput.value = ''; elements.answerInput.disabled = false; elements.submitButton.disabled = false; elements.answerInput.focus();
     }
 
@@ -108,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentQuestion = allQuizData[currentQuestionIndex];
         let isCorrect = false;
 
-        if(!isChaosModeActive){
+        if(!isChaosModeActive){ // Only check answer if not in chaos mode
             const normalizedUserAnswer = normalizeAnswer(userAnswer);
             for(const correctAnswer of currentQuestion.answers){
                 if(normalizeAnswer(correctAnswer) === normalizedUserAnswer){ isCorrect = true; break; }
@@ -124,12 +151,12 @@ document.addEventListener('DOMContentLoaded', () => {
             score+=10;
             elements.nextButton.classList.remove('hidden');
         } else {
-            elements.feedbackMessage.innerHTML = `不正解！<br><span class="chaos-engage-text">永久カオスモード <span class="emphasis-red">起動</span></span>`;
+            elements.feedbackMessage.innerHTML = `不正解！<br><span class="chaos-engage-text">真・無限<span class="emphasis-red">「なんでや」</span>カオス起動</span>`;
             elements.feedbackMessage.className='message-feedback incorrect';
             const correctAnswersText = currentQuestion.answers.join(' ／ ');
-            elements.feedbackMessage.innerHTML += ` <span style="font-size:0.7em;">(正解: ${correctAnswersText})</span>`;
+            elements.feedbackMessage.innerHTML += ` <span style="font-size:0.6em; color: var(--dim-text);">(正解: ${correctAnswersText})</span>`;
             
-            if(!isChaosModeActive) activateChaosMode(); // Pass no question data as only Nandeya text is used
+            if(!isChaosModeActive) activateChaosMode();
             elements.nextButton.classList.add('hidden');
         }
         elements.answerInput.disabled = true;
@@ -144,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else elements.otherSpellingsContainer.classList.add('hidden');
         
         updateScoreDisplay();
-        if(isCorrect) currentQuestionIndex++;
+        if(isCorrect && !isChaosModeActive) currentQuestionIndex++; // Only advance if correct and not in chaos
     }
     
     function normalizeAnswer(str) { if(!str)return"";return str.normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g,m=>String.fromCharCode(m.charCodeAt(0)-0x60)).replace(/\s+/g,''); }
@@ -156,18 +183,19 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.submitButton.disabled = true;
         elements.nextButton.disabled = true;
         elements.restartButton.disabled = true;
-        let overlay = document.getElementById('chaos-overlay');
+        let overlay = document.getElementById('chaos-active-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
-            overlay.id = 'chaos-overlay';
-            overlay.classList.add('chaos-active-overlay'); // Use class for styling
-            document.body.appendChild(overlay);
+            overlay.id = 'chaos-active-overlay';
+            overlay.classList.add('chaos-active-overlay');
+            document.body.appendChild(overlay); // Append to body to ensure it covers everything
         }
+        overlay.classList.remove('hidden'); // Make sure it's visible
     }
     function enableGameControls() {
         elements.answerInput.disabled=false;elements.submitButton.disabled=false;elements.nextButton.classList.add('hidden');elements.restartButton.disabled=false;
-        const overlay = document.getElementById('chaos-overlay');
-        if (overlay) overlay.remove();
+        const overlay = document.getElementById('chaos-active-overlay');
+        if (overlay) overlay.classList.add('hidden'); // Hide instead of remove, to reuse
     }
 
     // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY ---
@@ -176,20 +204,21 @@ document.addEventListener('DOMContentLoaded', () => {
         isChaosModeActive = true;
         disableGameControls();
         
-        triggerNandeyaElementsBatch(80); // MASSIVE initial burst of Nandeya phrases
+        triggerNandeyaElementsBatch(100); // ★★★ EVEN MORE MASSIVE initial burst ★★★
 
         if (chaosIntervalId) clearInterval(chaosIntervalId);
         chaosIntervalId = setInterval(() => {
-            triggerNandeyaElementsBatch(25 + Math.floor(Math.random() * 25)); // Continuously add 25-49 more
-        }, 500); // Add new batch every 0.5 seconds - EXTREMELY AGGRESSIVE
+            triggerNandeyaElementsBatch(30 + Math.floor(Math.random() * 30)); // Continuously add 30-59 more
+        }, 350); // ★★★ Add new batch every 0.35 seconds - INSANELY AGGRESSIVE ★★★
+        requestAnimationFrame(updatePerformanceMonitor); // Restart FPS counter if it stopped
     }
 
     function triggerNandeyaElementsBatch(numElements) {
-        const DURATION_BASE = 15000; // Very long base duration for extreme stickiness
-        const DURATION_RANDOM_ADD = 10000; // High variation
+        const DURATION_BASE = 20000; // Longer base for extreme stickiness
+        const DURATION_RANDOM_ADD = 15000;
 
-        if (nandeyaPhrases.length === 0) { // Fallback if phrases not ready
-            nandeyaPhrases.push({text: "なんでや！！！", isEmphasized: true});
+        if (nandeyaPhrases.length === 0) {
+            nandeyaPhrases.push({text: "「なんでや」の準備がまだや！", isEmphasized: true});
         }
 
         for (let i = 0; i < numElements; i++) {
@@ -197,94 +226,96 @@ document.addEventListener('DOMContentLoaded', () => {
             const duration = DURATION_BASE + Math.random() * DURATION_RANDOM_ADD;
             setTimeout(() => {
                 createNandeyaElement(selectedPhraseObj.text, selectedPhraseObj.isEmphasized, duration);
-            }, i * (150 / numElements) ); // Spread out creation slightly
+            }, i * (100 / numElements) ); // Spread out creation over 0.1s for a batch
         }
     }
 
     function createNandeyaElement(text, isEmphasized, duration) {
         const el = document.createElement('div');
         el.classList.add('flying-element', 'flying-text');
+        flyingElementCount++; // Increment for monitor
+
         if (isEmphasized) {
             el.classList.add('nandeya-emphasis');
+            el.style.fontSize = `${2.2 + Math.random() * 3.3}em`; // 2.2em to 5.5em - VERY LARGE
+            el.style.zIndex = (parseInt(el.style.zIndex || 50000) + 10).toString(); // Emphasized on top of others
+        } else {
+            el.classList.add('general-rainbow-text');
+            el.style.fontSize = `${1.0 + Math.random() * 1.5}em`; // 1.0em to 2.5em - Readable but varied
         }
-
         el.textContent = text;
         
-        const currentHue = (flyingElementHueStart + Math.random() * 200) % 360;
-        flyingElementHueStart = (flyingElementHueStart + 3) % 360;
+        const currentHue = (flyingElementHueStart + Math.random() * 220) % 360;
+        flyingElementHueStart = (flyingElementHueStart + 2.5) % 360; // Slower overall shift for more variety
 
-        // Dynamic styling for "Nandeya" emphasis
-        if (isEmphasized) {
-            el.style.fontSize = `${2 + Math.random() * 2.5}em`; // 2em to 4.5em
-            el.style.fontWeight = '900';
-            el.style.zIndex = '5002'; // Above other flying elements
-            // CSS class 'nandeya-emphasis' handles intensive animation
-        } else {
-            el.style.fontSize = `${0.8 + Math.random() * 1.2}em`; // 0.8em to 2.0em
-            el.classList.add('rainbow-css-effect'); // General rainbow for non-emphasized
-        }
-        
-        el.style.backgroundColor = `hsla(${currentHue}, 95%, ${10 + Math.random()*10}%, ${0.7 + Math.random()*0.2})`; // Dark, vibrant, varying alpha
-        el.style.border = `2px solid hsla(${(currentHue + 60) % 360}, 100%, ${60 + Math.random()*20}%, ${0.8 + Math.random()*0.15})`;
-        el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 80%)`; // Contrasting text color
-        el.style.textShadow = `0 0 2px black, 0 0 4px black, 0 0 6px hsla(${(currentHue + 200)%360}, 100%, 60%, 0.8)`;
+        el.style.setProperty('--base-hue', currentHue + 'deg'); // For CSS var use if any
+        el.style.backgroundColor = `hsla(${currentHue}, 90%, ${5 + Math.random()*10}%, ${0.6 + Math.random()*0.3})`;
+        el.style.border = `2px solid hsla(${(currentHue + Math.random()*60 -30) % 360}, 100%, ${55 + Math.random()*25}%, ${0.7 + Math.random()*0.2})`;
+        el.style.color = `hsl(${(currentHue + 180 + Math.random()*60-30) % 360}, 100%, ${80 + Math.random()*10}%)`;
+        el.style.textShadow = `0 0 1px black, 0 0 3px black, 0 0 5px hsla(${(currentHue + 200)%360}, 100%, 60%, 0.9), 0 0 10px hsla(${(currentHue + 200)%360}, 100%, 60%, 0.6)`;
 
-
-        document.body.appendChild(el);
+        document.body.appendChild(el); // Append to body to fly over everything
 
         const screenW = window.innerWidth;
         const screenH = window.innerHeight;
-        const elRect = el.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect(); // Get size after appending and styling
         const elW = elRect.width;
         const elH = elRect.height;
 
-        // "こびりつく" 動き: Some extremely slow, some erratic, some stick to edges
-        const movementType = Math.random();
+        // "ねちっこくハードでこびりつく" - More varied and sticky movements
+        const animType = Math.random();
         let keyframes;
-        let animDuration = duration * (0.5 + Math.random() * 1.5); // Vary duration more
+        let animDuration = duration * (0.8 + Math.random() * 1.2); // Vary duration significantly
+        let animEasing = `cubic-bezier(${Math.random()*0.3}, ${0.4 + Math.random()*0.6}, ${0.7 - Math.random()*0.3}, ${Math.random()*0.5 + 0.1})`;
+        let iterations = Infinity;
+        let direction = (Math.random() < 0.4 ? 'alternate' : 'normal');
 
         const startX = Math.random() * screenW - elW / 2;
         const startY = Math.random() * screenH - elH / 2;
         let endX, endY;
 
-        if (movementType < 0.25) { // Type 1: Super slow, "sticky" (こびりつく), minimal movement
-            endX = startX + (Math.random() * 100 - 50); // Move very little
-            endY = startY + (Math.random() * 100 - 50);
-            animDuration *= (2 + Math.random() * 2); // Make it even slower
-        } else if (movementType < 0.5) { // Type 2: Edge crawler (こびりつく)
-            if (Math.random() < 0.5) { // Stick to vertical edge
-                endX = (Math.random() < 0.5 ? 0 - elW/3 : screenW - elW*2/3);
-                endY = Math.random() * screenH;
-            } else { // Stick to horizontal edge
-                endX = Math.random() * screenW;
-                endY = (Math.random() < 0.5 ? 0 - elH/3 : screenH - elH*2/3);
-            }
-        } else { // Type 3: Hardcore erratic (ハード)
-            endX = Math.random() * screenW * 2.5 - screenW * 0.75; // Wild travel
-            endY = Math.random() * screenH * 2.5 - screenH * 0.75;
+        const rotStart = Math.random() * 1080 - 540; // Extreme start rotation
+        let rotEnd = rotStart + (Math.random() > 0.5 ? 1 : -1) * (1080 + Math.random() * 2160); // Extreme end rotation
+
+        if (animType < 0.15) { // Type 1: Super Slow, "Jittery Sticky" - こびりつく
+            endX = startX + (Math.random() * 60 - 30);
+            endY = startY + (Math.random() * 60 - 30);
+            rotEnd = rotStart + (Math.random() * 90 - 45);
+            animDuration *= (2.5 + Math.random() * 2); // Much slower
+            animEasing = 'steps(10, end)'; // Jittery
+            direction = 'alternate-reverse';
+        } else if (animType < 0.35) { // Type 2: "Edge Drifter" - こびりつく
+            const edge = Math.floor(Math.random() * 4); // 0:top, 1:right, 2:bottom, 3:left
+            if (edge === 0) { endX = Math.random()*screenW; endY = -elH * (0.5 + Math.random()*0.5); } // Drift off top
+            else if (edge === 1) { endX = screenW + elW * (0.5 + Math.random()*0.5); endY = Math.random()*screenH; } // Drift off right
+            else if (edge === 2) { endX = Math.random()*screenW; endY = screenH + elH * (0.5 + Math.random()*0.5); } // Drift off bottom
+            else { endX = -elW * (0.5 + Math.random()*0.5); endY = Math.random()*screenH; } // Drift off left
+            animDuration *= (1.5 + Math.random());
+            rotEnd = rotStart + (Math.random() * 180 - 90);
+        } else { // Type 3: "Hardcore Chaotic" - ハード
+            endX = Math.random() * screenW * 3 - screenW; // Moves far off screen
+            endY = Math.random() * screenH * 3 - screenH;
         }
         
-        const initialRotation = Math.random() * 1440 - 720; // More spin
-        const endRotation = initialRotation + (Math.random() > 0.5 ? 1 : -1) * (1440 + Math.random() * 1440);
-        const initialScale = 0.05 + Math.random() * 0.15;
-        const peakScale = isEmphasized ? (1.5 + Math.random()) : (0.8 + Math.random() * 0.7);
-        const endScale = isEmphasized ? (0.8 + Math.random()*0.5) : (0.3 + Math.random()*0.4); // Don't disappear fully for stickiness
+        const initialScale = 0.01 + Math.random() * 0.1;
+        const peakScale = isEmphasized ? (1.8 + Math.random() * 1.2) : (1.0 + Math.random() * 0.6);
+        const finalPersistScale = isEmphasized ? (0.7 + Math.random()*0.6) : (0.4 + Math.random()*0.5); // Never fully disappears
 
         keyframes = [
-            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${initialRotation}deg)`, opacity: 0, filter: 'blur(20px) brightness(0.3) saturate(0)'},
-            { transform: `translate(${startX + (endX-startX)*0.1}px, ${startY + (endY-startY)*0.1}px) scale(${peakScale}) rotate(${initialRotation + (endRotation - initialRotation)*0.1}deg)`, opacity: 0.95, filter: 'blur(0px) brightness(1.2) saturate(1.5)', offset: 0.1 },
-            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${ (peakScale + endScale) / (isEmphasized ? 1.5:2.5) }) rotate(${initialRotation + (endRotation - initialRotation)*0.5}deg)`, opacity: 0.9, filter: `brightness(${isEmphasized? 1.5:1.1}) saturate(${isEmphasized?2:1.2})`, offset: 0.5 },
-            { transform: `translate(${endX}px, ${endY}px) scale(${endScale}) rotate(${endRotation}deg)`, opacity: (isEmphasized ? 0.85 : 0.75) + Math.random()*0.1, filter: `brightness(${isEmphasized?1.2:0.9}) saturate(${isEmphasized?1.5:1})` } // Does not fade to 0 opacity
+            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(25px) brightness(0.2) saturate(0)', offset: 0 },
+            { transform: `translate(${startX + (endX-startX)*0.05}px, ${startY + (endY-startY)*0.05}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.05}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.3) saturate(1.8)', offset: 0.07 }, // Quick appearance
+            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / 2}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.95, filter: `brightness(1.1) saturate(1.5) hue-rotate(${Math.random()*60-30}deg)`, offset: 0.4 + Math.random()*0.2 }, // Mid-point chaos
+            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.8 + Math.random()*0.2, filter: `brightness(1) saturate(1.2) hue-rotate(${Math.random()*120-60}deg)` } // Persists, does not fade out completely
         ];
         const timing = {
             duration: animDuration,
-            easing: `cubic-bezier(${Math.random()*0.2}, ${0.5 + Math.random()*0.5}, ${0.8 - Math.random()*0.2}, ${0.1 + Math.random()*0.4})`,
+            easing: animEasing,
             iterations: Infinity, // ★★★ PERPETUAL ANIMATION ★★★
-            direction: (Math.random() < 0.3 ? 'alternate' : 'normal') // Some elements will reverse direction for more chaos
+            direction: direction
         };
         
         el.animate(keyframes, timing);
-        // No el.remove() onfinish, they are PERMANENT
+        // Element is never removed from DOM
     }
 
     // --- Event Listeners ---
@@ -292,15 +323,13 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.answerInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSubmit(); });
     elements.nextButton.addEventListener('click', displayNextQuestion);
     elements.restartButton.addEventListener('click', () => {
-        // Stop chaos if it's running
         if (chaosIntervalId) clearInterval(chaosIntervalId);
         chaosIntervalId = null;
         isChaosModeActive = false;
-        // Remove all flying elements
         document.querySelectorAll('.flying-element').forEach(fe => fe.remove());
-        // Re-enable controls and reload data
+        flyingElementCount = 0; // Reset counter
         enableGameControls();
-        loadAndProcessCSV();
+        loadAndProcessCSV(); // Reload and restart game
     });
 
     // --- Initialization ---
