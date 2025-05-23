@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- Game Configuration & User Text ---
     const LONG_NANDEYA_TEXT_CONTENT = '相当偏差値の高い高校（身の丈に合ってない）に通っています。高三なのですが未だにアルファベットが読めないことやadhdっぽいことに悩んで親に土下座してwais受けさせてもらいました。知覚推理144言語理解142ワーキングメモリ130処理速度84でした。　総合は覚えてないですが多分139とかだったはずです。ウィスクの年齢なのにウェイス受けさせられた。なんでや';
-    let nandeyaPhrases = []; // Array of objects: { text: "phrase", isEmphasized: boolean }
+    let nandeyaPhrases = [];
     const STONE_IMAGE_FILENAME = 'stone.png';
 
     // --- HTML Element Cache & Validation ---
@@ -31,18 +31,18 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const key in elements) { if (!elements[key]) { const e=`FATAL ERROR: UI Element '${key}' not found. Check HTML IDs.`; console.error(e); if(document.body)document.body.innerHTML=`<p style="color:red;font-size:24px;padding:30px; text-align:center;">${e}</p>`; return; }}
 
     // --- Game State & Chaos Control ---
-    let quizDataByLevel = {};
-    let availableLevels = [];
+    let quizDataByCsvLevel = {}; // Stores questions grouped by their CSV level: { "1": [q1, q2], "2": [q3] }
+    let availableCsvLevels = []; // Sorted list of levels that actually exist in CSV data
     let currentQuestion = null;
     let score = 0;
-    let currentGameLevel = 1;
-    let maxReachedCsvLevel = 0; // CSV内の最大レベルを追跡
+    let currentGameDisplayLevel = 1; // This is the level displayed to the user, starts at 1
+    let maxCsvLevel = 0; // Highest level found in CSV data
     const csvFilePath = 'ankiDeck.csv';
     let chaosIntervalId = null;
     let isChaosModeActive = false;
     let flyingElementHueStart = Math.random() * 360;
     let flyingElementCount = 0;
-    let unaskedQuestionsByLevel = {};
+    let unaskedQuestionsByCsvLevel = {}; // Tracks unasked questions for each CSV level
 
     // --- Performance Monitor ---
     let lastFrameTime = performance.now(); let frameCount = 0;
@@ -50,76 +50,24 @@ document.addEventListener('DOMContentLoaded', () => {
         frameCount++; const now = performance.now();
         if (now - lastFrameTime >= 1000) {
             const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
-            elements.performanceMonitor.textContent = `FPS: ${fps} | Chaos Elements: ${flyingElementCount} | Game Level: ${currentGameLevel}`;
+            elements.performanceMonitor.textContent = `FPS: ${fps} | Chaos Elements: ${flyingElementCount} | Game Display Level: ${currentGameDisplayLevel}`;
             frameCount = 0; lastFrameTime = now;
         }
-        requestAnimationFrame(updatePerformanceMonitorLoop); // Always run for FPS
+        requestAnimationFrame(updatePerformanceMonitorLoop);
     }
     requestAnimationFrame(updatePerformanceMonitorLoop);
 
-    // --- Nandeya Text Processing (Improved "なんでや" handling) ---
+
+    // --- Nandeya Text Processing (with emphasis flag) ---
     function splitNandeyaText() {
-        const minL = 5; const maxL = 28; // Phrase length constraints
-        const fullText = LONG_NANDEYA_TEXT_CONTENT;
-        nandeyaPhrases = [];
-        const emphasisKeyword = "なんでや";
-        const sentences = fullText.split(/([。、！？　]+)/g); // Split by punctuation, keeping delimiters
-
-        let currentPhrase = "";
-        for (let i = 0; i < sentences.length; i++) {
-            currentPhrase += sentences[i];
-            if (sentences[i].match(/[。、！？　]/) || i === sentences.length - 1 || currentPhrase.length >= minL) {
-                if (currentPhrase.trim().length >= minL) {
-                    const trimmed = currentPhrase.trim();
-                    const isEmphasized = trimmed.includes(emphasisKeyword);
-                    // If emphasized, try to make the phrase meaningful around "なんでや"
-                    if (isEmphasized) {
-                        let emphasisIndex = trimmed.indexOf(emphasisKeyword);
-                        let start = Math.max(0, emphasisIndex - Math.floor(Math.random() * 10 + 5)); // Include some context before
-                        let end = Math.min(trimmed.length, emphasisIndex + emphasisKeyword.length + Math.floor(Math.random() * 10 + 5)); // And after
-                        let phraseForEmphasis = trimmed.substring(start, end);
-                        
-                        // Ensure "なんでや" itself is not cut, and it's reasonably long
-                        if (!phraseForEmphasis.includes(emphasisKeyword)) phraseForEmphasis = emphasisKeyword; // Fallback to just "なんでや"
-                        else if (phraseForEmphasis.length < emphasisKeyword.length + 2 && trimmed.length > phraseForEmphasis.length) { // Too short, try to expand
-                             let expandedStart = Math.max(0, trimmed.indexOf(emphasisKeyword) - 10);
-                             let expandedEnd = Math.min(trimmed.length, trimmed.indexOf(emphasisKeyword) + emphasisKeyword.length + 10);
-                             phraseForEmphasis = trimmed.substring(expandedStart, expandedEnd);
-                        }
-                        nandeyaPhrases.push({ text: phraseForEmphasis.trim(), isEmphasized: true});
-
-                    } else if (trimmed.length <= maxL * 1.5) { // If not emphasized, and not too long
-                         nandeyaPhrases.push({ text: trimmed, isEmphasized: false });
-                    } else { // If too long and not emphasized, split further
-                        let subTxt = trimmed;
-                        while(subTxt.length > 0) {
-                            let subLen = Math.floor(Math.random() * (maxL - minL +1)) + minL;
-                            let finalSubPhrase = subTxt.substring(0, Math.min(subLen, subTxt.length));
-                            if (finalSubPhrase.trim()) {
-                                nandeyaPhrases.push({text: finalSubPhrase.trim(), isEmphasized: false});
-                            }
-                            subTxt = subTxt.substring(finalSubPhrase.length);
-                             if (finalSubPhrase.length === 0 && subTxt.length > 0) { // Safety break
-                                nandeyaPhrases.push({ text: subTxt.substring(0, Math.min(subTxt.length, maxL)), isEmphasized: false });
-                                subTxt = "";
-                            }
-                        }
-                    }
-                }
-                currentPhrase = "";
-            }
-        }
-        if (nandeyaPhrases.length === 0 && LONG_NANDEYA_TEXT_CONTENT) { // Fallback
-            const fp = LONG_NANDEYA_TEXT_CONTENT.substring(0, maxL);
-            nandeyaPhrases.push({ text: fp.trim(), isEmphasized: fp.includes(emphasisKeyword) });
-        }
-        // Ensure at least one "なんでや" phrase if possible
-        if (!nandeyaPhrases.some(p => p.isEmphasized) && LONG_NANDEYA_TEXT_CONTENT.includes(emphasisKeyword)) {
-            nandeyaPhrases.push({ text: emphasisKeyword, isEmphasized: true });
-        }
-        console.log("Nandeya Phrases:", nandeyaPhrases);
-    }
-
+        const minL=5; const maxL=28; let txt=LONG_NANDEYA_TEXT_CONTENT; nandeyaPhrases=[];
+        const emphasisKeyword="なんでや"; const emphasisRegex=new RegExp(emphasisKeyword,"g");
+        while(txt.length>0){let len=Math.floor(Math.random()*(maxL-minL+1))+minL;let p=txt.substring(0,Math.min(len,txt.length));let cut=-1;
+        ['。','、',' ','　','！','？','（','）',')','(','「','」','・','…'].forEach(char=>{let i=p.lastIndexOf(char);if(i>p.length/3&&i>cut)cut=i;});
+        if(cut!==-1&&txt.length>cut+1)p=txt.substring(0,cut+1);else if(txt.length<=maxL*1.2)p=txt;
+        const tp=p.trim();if(tp)nandeyaPhrases.push({text:tp,isEmphasized:emphasisRegex.test(tp)});
+        txt=txt.substring(p.length);if(p.length===0&&txt.length>0){const sp=txt.substring(0,Math.min(txt.length,maxL));nandeyaPhrases.push({text:sp.trim(),isEmphasized:emphasisRegex.test(sp)});txt="";}}
+        if(nandeyaPhrases.length===0&&LONG_NANDEYA_TEXT_CONTENT){const fp=LONG_NANDEYA_TEXT_CONTENT.substring(0,maxL);nandeyaPhrases.push({text:fp.trim(),isEmphasized:emphasisRegex.test(fp)});}}
 
     // --- Data Loading & Processing ---
     async function loadAndProcessCSV() {
@@ -129,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 complete: (results) => {
                     if (results.errors.length > 0) console.warn("CSV Parse Warnings:", results.errors);
                     processQuizData(results.data);
-                    if (availableLevels.length > 0) startGame();
+                    if (availableCsvLevels.length > 0) startGame();
                     else elements.loadingDisplay.innerHTML = "<p>Error: No valid quiz data levels found.</p>";
                 },
                 error: (err) => { console.error("CSV Parse Error:", err); elements.loadingDisplay.innerHTML = `<p>Fatal CSV Parse Error: ${err.message}</p>`; }
@@ -138,21 +86,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function processQuizData(rawData) {
-        const tempQuizDataByLevel = {};
+        const tempQuizDataByCsvLevel = {};
         rawData.forEach(row => {
             if (!row['単語']?.trim() || !row['レベル']?.trim() || !row['問題ID']?.trim()) return;
             const problemId = row['問題ID'].trim();
-            const level = parseInt(row['レベル'], 10);
-            if (isNaN(level)) return;
+            const csvLevel = parseInt(row['レベル'], 10);
+            if (isNaN(csvLevel)) return;
 
-            if (!tempQuizDataByLevel[level]) tempQuizDataByLevel[level] = {};
-            if (!tempQuizDataByLevel[level][problemId]) {
-                tempQuizDataByLevel[level][problemId] = {
-                    id: problemId, level: level, displayWords: new Set(), answers: new Set(),
-                    meanings: new Set(), notes: new Set(), otherSpellingsFromColumn: new Set()
+            if (!tempQuizDataByCsvLevel[csvLevel]) tempQuizDataByCsvLevel[csvLevel] = {};
+            if (!tempQuizDataByCsvLevel[csvLevel][problemId]) {
+                tempQuizDataByCsvLevel[csvLevel][problemId] = {
+                    id: problemId, csvLevel: csvLevel, // Store original CSV level
+                    displayWords: new Set(), answers: new Set(), meanings: new Set(),
+                    notes: new Set(), otherSpellingsFromColumn: new Set()
                 };
             }
-            const entry = tempQuizDataByLevel[level][problemId];
+            const entry = tempQuizDataByCsvLevel[csvLevel][problemId];
             entry.displayWords.add(row['単語'].trim());
             entry.answers.add(row['読み方']?.trim() || '');
             if (row['別解']?.trim()) row['別解'].trim().split(/[/／、。・\s]+/).forEach(a => { if (a) entry.answers.add(a.trim()); });
@@ -161,88 +110,125 @@ document.addEventListener('DOMContentLoaded', () => {
             if (row['別表記']?.trim()) entry.otherSpellingsFromColumn.add(row['別表記'].trim());
         });
 
-        quizDataByLevel = {};
-        for (const level in tempQuizDataByLevel) {
-            quizDataByLevel[level] = Object.values(tempQuizDataByLevel[level]).map(item => ({
+        quizDataByCsvLevel = {};
+        for (const level in tempQuizDataByCsvLevel) {
+            quizDataByCsvLevel[level] = Object.values(tempQuizDataByCsvLevel[level]).map(item => ({
                 ...item,
                 displayWords: Array.from(item.displayWords), answers: Array.from(item.answers).filter(Boolean),
                 meanings: Array.from(item.meanings).join(' <br> '), notes: Array.from(item.notes).join(' <br> '),
                 otherSpellingsFromColumn: Array.from(item.otherSpellingsFromColumn),
             }));
         }
-        availableLevels = Object.keys(quizDataByLevel).map(Number).sort((a, b) => a - b);
-        if (availableLevels.length > 0) maxReachedCsvLevel = availableLevels[availableLevels.length -1];
+        
+        availableCsvLevels = Object.keys(quizDataByCsvLevel).map(Number).sort((a, b) => a - b);
+        if (availableCsvLevels.length > 0) maxCsvLevel = availableCsvLevels[availableCsvLevels.length -1];
+        
+        console.log("Processed Quiz Data by CSV Level:", quizDataByCsvLevel);
+        console.log("Available CSV Levels:", availableCsvLevels);
     }
     
-    function resetUnaskedQuestionsForLevel(levelKey) { // levelKey can be a number or string
-        const actualLevelKey = String(levelKey); // Ensure string key for object
-        if (quizDataByLevel[actualLevelKey]) {
-            unaskedQuestionsByLevel[actualLevelKey] = [...quizDataByLevel[actualLevelKey]];
+    function resetUnaskedQuestionsForCsvLevel(csvLevel) {
+        const levelKey = String(csvLevel);
+        if (quizDataByCsvLevel[levelKey]) {
+            unaskedQuestionsByCsvLevel[levelKey] = [...quizDataByCsvLevel[levelKey]];
         } else {
-             // If specific level has no questions (e.g. user advances beyond CSV max level)
-             // Fallback to highest available CSV level if trying to access a non-existent higher level.
-            if (levelKey > maxReachedCsvLevel && maxReachedCsvLevel > 0) {
-                unaskedQuestionsByLevel[actualLevelKey] = [...(quizDataByLevel[String(maxReachedCsvLevel)] || [])];
-            } else {
-                unaskedQuestionsByLevel[actualLevelKey] = [];
-            }
+            unaskedQuestionsByCsvLevel[levelKey] = [];
         }
     }
 
     // --- Game Logic ---
     function startGame() {
-        currentQuestionIndex = 0; score = 0;
-        currentGameLevel = availableLevels.length > 0 ? availableLevels[0] : 1;
+        score = 0;
+        // Start game display level at 1. Determine the initial CSV level to pick questions from.
+        currentGameDisplayLevel = 1; 
+        elements.currentLevelDisplay.textContent = currentGameDisplayLevel;
+        
+        // Initialize unasked questions for all available CSV levels
+        availableCsvLevels.forEach(level => resetUnaskedQuestionsForCsvLevel(level));
+
         updateScoreDisplay();
-        elements.currentLevelDisplay.textContent = currentGameLevel;
         elements.gameOverSection.classList.add('hidden');
         elements.feedbackSection.classList.add('hidden');
         elements.loadingDisplay.classList.add('hidden');
         elements.questionSection.classList.remove('hidden');
         enableGameControls();
-        resetUnaskedQuestionsForLevel(currentGameLevel);
         displayNextQuestion();
     }
+
+    function getActualCsvLevelToQuery(targetDisplayLevel) {
+        // Try to match display level with an actual CSV level
+        if (quizDataByCsvLevel[String(targetDisplayLevel)] && quizDataByCsvLevel[String(targetDisplayLevel)].length > 0) {
+            return targetDisplayLevel;
+        }
+        // If exact match not found, find the closest available CSV level that is <= targetDisplayLevel
+        let closestCsvLevel = -1;
+        for (let i = availableCsvLevels.length - 1; i >= 0; i--) {
+            if (availableCsvLevels[i] <= targetDisplayLevel) {
+                closestCsvLevel = availableCsvLevels[i];
+                break;
+            }
+        }
+        // If no CSV level is <= targetDisplayLevel (e.g. targetDisplayLevel is 1 but CSV starts at 5), use lowest available.
+        if (closestCsvLevel === -1 && availableCsvLevels.length > 0) {
+            closestCsvLevel = availableCsvLevels[0];
+        }
+        // If targetDisplayLevel is beyond maxCsvLevel, cap at maxCsvLevel
+        if (targetDisplayLevel > maxCsvLevel && maxCsvLevel > 0) {
+            closestCsvLevel = maxCsvLevel;
+        }
+        return closestCsvLevel > 0 ? closestCsvLevel : (availableCsvLevels.length > 0 ? availableCsvLevels[0] : -1);
+    }
+
 
     function displayNextQuestion() {
         if (isChaosModeActive) return;
 
-        let currentLevelKey = String(currentGameLevel);
-        // Ensure pool for current game level exists, or create from highest CSV level if beyond
-        if (!unaskedQuestionsByLevel[currentLevelKey] || unaskedQuestionsByLevel[currentLevelKey].length === 0) {
-            if (currentGameLevel > maxReachedCsvLevel && maxReachedCsvLevel > 0) {
-                 // If current game level is beyond what's in CSV, use questions from highest CSV level
-                currentLevelKey = String(maxReachedCsvLevel);
-                if (!unaskedQuestionsByLevel[currentLevelKey] || unaskedQuestionsByLevel[currentLevelKey].length === 0) {
-                    resetUnaskedQuestionsForLevel(maxReachedCsvLevel); // Refill from highest CSV level
-                }
-                 elements.currentLevelDisplay.textContent = `${currentGameLevel}(${maxReachedCsvLevel}相当)`; // Indicate actual content level
+        let actualCsvLevel = getActualCsvLevelToQuery(currentGameDisplayLevel);
+        let csvLevelKey = String(actualCsvLevel);
+
+        // If pool for this actualCsvLevel is exhausted or doesn't exist, reset it.
+        // This means if we query level 5, and its empty, we refill level 5.
+        if (!unaskedQuestionsByCsvLevel[csvLevelKey] || unaskedQuestionsByCsvLevel[csvLevelKey].length === 0) {
+            if (quizDataByCsvLevel[csvLevelKey] && quizDataByCsvLevel[csvLevelKey].length > 0) {
+                 resetUnaskedQuestionsForCsvLevel(actualCsvLevel); // Refill the pool for this CSV level
             } else {
-                // Try to find next available actual CSV level if current has no more questions
-                const currentLevelIndex = availableLevels.indexOf(parseInt(currentLevelKey));
-                if (currentLevelIndex !== -1 && currentLevelIndex < availableLevels.length -1) {
-                    currentGameLevel = availableLevels[currentLevelIndex + 1]; // This is an actual level increment
-                    currentLevelKey = String(currentGameLevel);
-                    elements.currentLevelDisplay.textContent = currentGameLevel;
-                    resetUnaskedQuestionsForLevel(currentLevelKey);
-                } else { // Truly no more questions anywhere or exhausted highest level
-                    showGameOver("全問題クリア！または問題データが尽きました。"); return;
+                // This CSV level has no questions at all (should not happen if getActualCsvLevelToQuery is correct and data exists)
+                // Or, all questions from all levels might have been exhausted in a very long game.
+                // Try to find the *next* available CSV level with questions
+                let foundNext = false;
+                for (let i = 0; i < availableCsvLevels.length; i++) {
+                    if (availableCsvLevels[i] > actualCsvLevel) {
+                        const nextLevelWithQuestions = String(availableCsvLevels[i]);
+                        if(quizDataByCsvLevel[nextLevelWithQuestions] && quizDataByCsvLevel[nextLevelWithQuestions].length > 0) {
+                            actualCsvLevel = availableCsvLevels[i];
+                            csvLevelKey = String(actualCsvLevel);
+                            resetUnaskedQuestionsForCsvLevel(actualCsvLevel);
+                            foundNext = true;
+                            break;
+                        }
+                    }
+                }
+                if (!foundNext) { // No more questions in any higher CSV level, or no higher levels exist
+                    if (maxCsvLevel > 0 && quizDataByCsvLevel[String(maxCsvLevel)]?.length > 0) {
+                        // Fallback to highest CSV level and allow repeats.
+                        actualCsvLevel = maxCsvLevel;
+                        csvLevelKey = String(actualCsvLevel);
+                        resetUnaskedQuestionsForCsvLevel(actualCsvLevel); // Refill highest
+                        elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (${actualCsvLevel}再)`;
+                    } else {
+                        showGameOver("全ての有効な問題が終了しました。"); return;
+                    }
                 }
             }
         }
         
-        let pool = unaskedQuestionsByLevel[currentLevelKey];
-        if (!pool || pool.length === 0) { // If after all checks, pool is still empty (e.g. highest level also exhausted)
-            resetUnaskedQuestionsForLevel(currentLevelKey); // Try refilling one last time (allows repeating current level)
-            pool = unaskedQuestionsByLevel[currentLevelKey];
-            if(!pool || pool.length === 0) { // If STILL empty, then really no questions.
-                 showGameOver(`レベル ${currentLevelKey} の問題がありません。`); return;
-            }
+        let pool = unaskedQuestionsByCsvLevel[csvLevelKey];
+        if (!pool || pool.length === 0) { // If pool is still empty after trying to refill/find next
+            showGameOver(`レベル ${csvLevelKey} の問題が取得できませんでした。`); return;
         }
 
-
         const randomIndex = Math.floor(Math.random() * pool.length);
-        currentQuestion = pool.splice(randomIndex, 1)[0];
+        currentQuestion = pool.splice(randomIndex, 1)[0]; // Get and remove question
 
         elements.feedbackSection.classList.add('hidden'); elements.infoDetailsArea.classList.add('hidden'); elements.nextButton.classList.add('hidden');
         
@@ -255,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleSubmit() {
         if(elements.answerInput.disabled && !isChaosModeActive) return;
         const userAnswer = elements.answerInput.value.trim();
-        if (!currentQuestion) { console.error("No current question for submit!"); displayNextQuestion(); return; }
+        if (!currentQuestion) { console.error("No current question!"); displayNextQuestion(); return; }
         let isCorrect = false;
 
         if(!isChaosModeActive){
@@ -268,16 +254,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if(isCorrect){
             elements.feedbackMessage.textContent="正解！"; elements.feedbackMessage.className='message-feedback correct';
             score+=10;
-            currentGameLevel++; // ★ Level up display on correct answer ★
-            elements.currentLevelDisplay.textContent = currentGameLevel;
+            currentGameDisplayLevel++; // ★ Display Level up on correct answer ★
+            elements.currentLevelDisplay.textContent = currentGameDisplayLevel; // Update display level
             elements.nextButton.classList.remove('hidden');
-            // Prepare for next game level's questions (actual CSV level may differ)
-            let nextActualLevelKey = String(currentGameLevel);
-            if (currentGameLevel > maxReachedCsvLevel && maxReachedCsvLevel > 0) {
-                nextActualLevelKey = String(maxReachedCsvLevel); // Use highest CSV level if game level exceeds
-            }
-            if (!unaskedQuestionsByLevel[nextActualLevelKey] && quizDataByLevel[nextActualLevelKey]) {
-                resetUnaskedQuestionsForLevel(nextActualLevelKey);
+            
+            // Prepare for next display level's questions; actual CSV level will be determined in displayNextQuestion
+            const nextQueryLevel = getActualCsvLevelToQuery(currentGameDisplayLevel);
+            if (quizDataByCsvLevel[String(nextQueryLevel)] && (!unaskedQuestionsByCsvLevel[String(nextQueryLevel)] || unaskedQuestionsByCsvLevel[String(nextQueryLevel)].length === 0)) {
+                resetUnaskedQuestionsForCsvLevel(nextQueryLevel);
             }
 
         } else {
@@ -328,46 +312,46 @@ document.addEventListener('DOMContentLoaded', () => {
         if (overlay) overlay.classList.add('hidden');
     }
 
-    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY (LIGHTER VERSION) ---
+    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY (LIGHTER VERSION from previous) ---
     function activateChaosMode() {
         if (isChaosModeActive) return; isChaosModeActive = true;
         disableGameControls();
         elements.feedbackMessage.innerHTML = `不正解！<br><span class="chaos-engage-text">調整版<span class="emphasis-red">「なんでや」</span>カオス、発動ッ！</span>`;
         
-        triggerNandeyaElementsBatch(35); // ★ Moderate initial burst: 35 ★
+        triggerNandeyaElementsBatch(30); // Initial burst: 30 (Adjusted)
 
         if (chaosIntervalId) clearInterval(chaosIntervalId);
         chaosIntervalId = setInterval(() => {
-            triggerNandeyaElementsBatch(8 + Math.floor(Math.random() * 8)); // ★ Continuous: 8-15 elements ★
-        }, 800); // ★ Slower interval: every 0.8 seconds ★
+            triggerNandeyaElementsBatch(10 + Math.floor(Math.random() * 10)); // Continuous: 10-19 elements (Adjusted)
+        }, 1000); // Interval: every 1 second (Adjusted)
         requestAnimationFrame(updatePerformanceMonitorLoop);
     }
 
     function triggerNandeyaElementsBatch(numElements) {
-        const DURATION_BASE = 15000; // Stickiness: long duration
-        const DURATION_RANDOM_ADD = 10000;
+        const DURATION_BASE = 14000; // Stickiness: long duration
+        const DURATION_RANDOM_ADD = 9000;
 
-        if (nandeyaPhrases.length === 0) nandeyaPhrases.push({text: "「なんでや」がないとは何でや！", isEmphasized: true});
+        if (nandeyaPhrases.length === 0) nandeyaPhrases.push({text: "「なんでや」がないぞ！ゴルァ！", isEmphasized: true});
         
         const emphasizedPhrases = nandeyaPhrases.filter(p => p.isEmphasized);
         const normalPhrases = nandeyaPhrases.filter(p => !p.isEmphasized);
 
         for (let i = 0; i < numElements; i++) {
             let selectedPhraseObj;
-            // Ensure "なんでや" phrases appear more frequently and are prioritized
             const emphasizeRoll = Math.random();
-            if (emphasizedPhrases.length > 0 && (emphasizeRoll < 0.6 || normalPhrases.length === 0)) { // 60% chance for emphasized if available
+            // ★ "なんでや" 強調フレーズの出現率をさらに上げる (例: 70% chance) ★
+            if (emphasizedPhrases.length > 0 && (emphasizeRoll < 0.7 || normalPhrases.length === 0)) {
                 selectedPhraseObj = emphasizedPhrases[Math.floor(Math.random() * emphasizedPhrases.length)];
             } else if (normalPhrases.length > 0) {
                 selectedPhraseObj = normalPhrases[Math.floor(Math.random() * normalPhrases.length)];
-            } else { // Fallback if only one type is exhausted or list is empty
-                selectedPhraseObj = nandeyaPhrases[Math.floor(Math.random() * nandeyaPhrases.length)] || {text: "なんでや…？", isEmphasized: true};
+            } else {
+                selectedPhraseObj = nandeyaPhrases[Math.floor(Math.random() * nandeyaPhrases.length)] || {text: "何故なんだ…", isEmphasized: true};
             }
 
             const duration = DURATION_BASE + Math.random() * DURATION_RANDOM_ADD;
             setTimeout(() => {
                 createNandeyaElement(selectedPhraseObj.text, selectedPhraseObj.isEmphasized, duration);
-            }, i * (200 / numElements) ); // Stagger slightly
+            }, i * (250 / numElements) );
         }
     }
 
@@ -378,74 +362,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isEmphasized) {
             el.classList.add('nandeya-emphasis');
-            el.style.fontSize = `${2.0 + Math.random() * 2.0}em`; // Emphasized: 2.0em to 4.0em
-            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + 10).toString();
+             // ★ フォントサイズをより大きく、目立つように ★
+            el.style.fontSize = `${2.5 + Math.random() * 2.5}em`; // Emphasized: 2.5em to 5.0em
+            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + 20).toString(); // Ensure truly on top
         } else {
             el.classList.add('general-rainbow-text');
-            el.style.fontSize = `${1.0 + Math.random() * 1.0}em`; // Normal: 1.0em to 2.0em
+            el.style.fontSize = `${1.0 + Math.random() * 1.2}em`; // Normal: 1.0em to 2.2em
         }
         el.textContent = text;
         
-        const currentHue = (flyingElementHueStart + Math.random() * 150) % 360;
-        flyingElementHueStart = (flyingElementHueStart + 7) % 360;
+        const currentHue = (flyingElementHueStart + Math.random() * 120) % 360;
+        flyingElementHueStart = (flyingElementHueStart + 8) % 360;
 
-        el.style.setProperty('--base-hue', currentHue + 'deg'); // For potential CSS var use
-        // Lighter CSS classes will handle primary rainbow, JS for dynamic BG/Border
-        el.style.backgroundColor = `hsla(${currentHue}, 85%, ${8 + Math.random()*10}%, ${0.65 + Math.random()*0.2})`;
-        el.style.border = `2px solid hsla(${(currentHue + Math.random()*50 -25) % 360}, 95%, ${50 + Math.random()*20}%, ${0.75 + Math.random()*0.1})`;
-        // Text color for general-rainbow-text will be managed by its CSS animation primarily
-        // For nandeya-emphasis, its CSS animation also handles color, but JS could override if needed.
-        if (!isEmphasized) { // Ensure non-emphasized text is readable over its dynamic BG
-            el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 85%)`;
-            el.style.textShadow = `0 0 2px black, 0 0 4px black, 0 0 6px hsla(${(currentHue + 200)%360}, 100%, 55%, 0.7)`;
-        }
-
+        el.style.setProperty('--base-hue', currentHue + 'deg');
+        el.style.backgroundColor = `hsla(${currentHue}, 88%, ${10 + Math.random()*12}%, ${0.7 + Math.random()*0.25})`;
+        el.style.border = `2px solid hsla(${(currentHue + Math.random()*45 -22.5) % 360}, 98%, ${55 + Math.random()*22}%, ${0.8 + Math.random()*0.18})`;
+        
+        if (!isEmphasized) {
+            el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 88%)`;
+            el.style.textShadow = `0 0 2px black, 0 0 4px black, 0 0 7px hsla(${(currentHue + 200)%360}, 100%, 65%, 0.8)`;
+        } // Emphasized text color/shadow is handled by its CSS class
 
         document.body.appendChild(el);
 
         const screenW = window.innerWidth; const screenH = window.innerHeight;
         const elRect = el.getBoundingClientRect(); const elW = elRect.width; const elH = elRect.height;
 
-        const animType = Math.random();
-        let keyframes;
-        let animDuration = duration * (0.8 + Math.random() * 0.7); // Slightly faster base, more variation
-        let animEasing = `cubic-bezier(${Math.random()*0.25 + 0.05}, ${0.45 + Math.random()*0.45}, ${0.55 - Math.random()*0.25}, ${Math.random()*0.45 + 0.15})`;
-        let iterations = Infinity;
-        let direction = (Math.random() < 0.4 ? 'alternate-reverse' : 'normal'); // More complex direction changes
+        const animType = Math.random(); let keyframes;
+        let animDuration = duration * (0.75 + Math.random() * 0.5); // Slightly shorter overall for more "active" feel
+        let animEasing = `cubic-bezier(${Math.random()*0.3}, ${0.4 + Math.random()*0.5}, ${0.7 - Math.random()*0.3}, ${Math.random()*0.5 + 0.15})`;
+        let iterations = Infinity; let direction = (Math.random() < 0.45 ? 'alternate-reverse' : 'normal');
 
         const startX = Math.random() * screenW - elW / 2;
         const startY = Math.random() * screenH - elH / 2;
         let endX, endY;
 
-        const rotStart = Math.random() * 720 - 360;
-        let rotEnd = rotStart + (Math.random() > 0.5 ? 1 : -1) * (720 + Math.random() * 1080); // Still lots of rotation
+        const rotStart = Math.random() * 540 - 270; // More initial spin range
+        let rotEnd = rotStart + (Math.random() > 0.5 ? 1 : -1) * (540 + Math.random() * 720); // More moderate total rotation
 
-        // Adjusting movement patterns for better "こびりつき" and "派手さ" balance
-        if (animType < 0.1) { // Super Sticky, almost no movement, but pulses/jitters
-            endX = startX + (Math.random() * 20 - 10); endY = startY + (Math.random() * 20 - 10);
-            rotEnd = rotStart + (Math.random() * 45 - 22.5); animDuration *= (2 + Math.random() * 1.5);
-            animEasing = 'steps(5, end)'; direction = 'alternate';
-        } else if (animType < 0.3) { // Slow Edge Crawler/Drifter
-            const edge = Math.floor(Math.random() * 4);
-            if (edge === 0) { endX = Math.random()*screenW; endY = -elH * (0.2 + Math.random()*0.2); }
-            else if (edge === 1) { endX = screenW + elW * (0.2 + Math.random()*0.2); endY = Math.random()*screenH; }
-            else if (edge === 2) { endX = Math.random()*screenW; endY = screenH + elH * (0.2 + Math.random()*0.2); }
-            else { endX = -elW * (0.2 + Math.random()*0.2); endY = Math.random()*screenH; }
-            animDuration *= (1.3 + Math.random()*0.7); rotEnd = rotStart + (Math.random() * 90 - 45);
-        } else { // Dynamic Chaotic Movement
-            endX = Math.random() * screenW * 2.0 - screenW * 0.5; // Moves far, ensuring visibility
-            endY = Math.random() * screenH * 2.0 - screenH * 0.5;
+        // Movement patterns focused on "派手さ" and "こびりつき"
+        if (animType < 0.1) { // Super Sticky, minimal movement, strong pulse/glitch from CSS
+            endX = startX + (Math.random() * 15 - 7.5); endY = startY + (Math.random() * 15 - 7.5);
+            rotEnd = rotStart + (Math.random() * 30 - 15); animDuration *= (2.0 + Math.random()); // Very slow
+            animEasing = 'steps(3, jump-end)'; direction = 'alternate';
+        } else if (animType < 0.35) { // Edge "Magnet" - Attracted to edges, then drifts slowly
+            const edgeTargetRoll = Math.random();
+            if(edgeTargetRoll < 0.25) { endX = Math.random() * elW - elW/2; endY = Math.random() * screenH; } // Left edge
+            else if (edgeTargetRoll < 0.5) { endX = screenW - Math.random() * elW + elW/2; endY = Math.random() * screenH; } // Right edge
+            else if (edgeTargetRoll < 0.75) { endX = Math.random() * screenW; endY = Math.random() * elH - elH/2; } // Top edge
+            else { endX = Math.random() * screenW; endY = screenH - Math.random() * elH + elH/2; } // Bottom edge
+            animDuration *= (1.4 + Math.random()*0.8); rotEnd = rotStart + (Math.random() * 60 - 30);
+        } else { // Hyper Dynamic Chaos
+            endX = Math.random() * screenW * 2.2 - screenW * 0.6; // Wider travel
+            endY = Math.random() * screenH * 2.2 - screenH * 0.6;
         }
         
-        const initialScale = 0.1 + Math.random() * 0.2;
-        const peakScale = isEmphasized ? (1.5 + Math.random() * 0.8) : (0.9 + Math.random() * 0.5);
-        const finalPersistScale = isEmphasized ? (0.75 + Math.random()*0.4) : (0.5 + Math.random()*0.35);
+        const initialScale = 0.15 + Math.random() * 0.25; // Slightly larger initial for visibility
+        const peakScale = isEmphasized ? (1.6 + Math.random() * 0.9) : (1.0 + Math.random() * 0.5);
+        const finalPersistScale = isEmphasized ? (0.8 + Math.random()*0.5) : (0.55 + Math.random()*0.4);
 
         keyframes = [
-            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(15px) brightness(0.3)'},
-            { transform: `translate(${startX + (endX-startX)*0.1}px, ${startY + (endY-startY)*0.1}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.1}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.2)', offset: 0.08 },
-            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / (isEmphasized?1.8:2.2)}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.95, filter: `brightness(1.05) hue-rotate(${Math.random()*30-15}deg)`, offset: 0.35 + Math.random()*0.25 },
-            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.85 + Math.random()*0.15, filter: `brightness(0.95) hue-rotate(${Math.random()*60-30}deg)` }
+            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(12px) brightness(0.4)'},
+            { transform: `translate(${startX + (endX-startX)*0.1}px, ${startY + (endY-startY)*0.1}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.1}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.15) saturate(1.6)', offset: 0.1 },
+            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / (isEmphasized?1.7:2.1)}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.95, filter: `brightness(1.0) saturate(1.3) hue-rotate(${Math.random()*20-10}deg)`, offset: 0.3 + Math.random()*0.3 },
+            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.9 + Math.random()*0.1, filter: `brightness(0.9) saturate(1.1) hue-rotate(${Math.random()*40-20}deg)` }
         ];
         const timing = { duration: animDuration, easing: animEasing, iterations: Infinity, direction: direction };
         
@@ -453,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
         catch (e) { console.warn("Anim fail:", e, el); el.remove(); flyingElementCount--; }
     }
 
-    // --- Event Listeners ---
+    // --- Event Listeners & Initialization ---
     elements.submitButton.addEventListener('click', handleSubmit);
     elements.answerInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSubmit(); });
     elements.nextButton.addEventListener('click', displayNextQuestion);
@@ -463,10 +443,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.flying-element').forEach(fe => fe.remove());
         flyingElementCount = 0;
         enableGameControls();
-        loadAndProcessCSV(); // Reload and restart
+        loadAndProcessCSV();
     });
-
-    // --- Initialization ---
     splitNandeyaText();
     loadAndProcessCSV();
 });
