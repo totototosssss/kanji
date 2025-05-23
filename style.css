@@ -1,0 +1,203 @@
+/* 基本的なリセット */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Noto Sans JP', sans-serif;
+    line-height: 1.6;
+    background-color: #f4f7f6; /* 少しだけ色味のある白 */
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* 上寄せで開始 */
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 700px; /* コンテンツの最大幅 */
+    background-color: #fff;
+    padding: 30px 40px;
+    border-radius: 12px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 20px;
+}
+
+header h1 {
+    font-family: 'Playfair Display', serif; /* 見出し用フォント */
+    font-size: 2.8em;
+    color: #2c3e50; /* 濃いブルーグレー */
+    margin-bottom: 10px;
+}
+
+#game-status {
+    display: flex;
+    justify-content: space-around;
+    font-size: 0.9em;
+    color: #555;
+}
+
+#quiz-area {
+    text-align: center;
+}
+
+#loading-message {
+    padding: 40px 0;
+    font-size: 1.2em;
+    color: #777;
+}
+
+#kanji-display {
+    font-size: 5em; /* 漢字のサイズは大きめに */
+    font-weight: bold;
+    color: #34495e; /* 漢字の色 */
+    margin: 20px 0;
+    min-height: 1.2em; /* 漢字がなくても高さを確保 */
+    letter-spacing: 0.05em;
+}
+
+#image-display img {
+    max-width: 100%;
+    max-height: 200px; /* 画像の最大高さ */
+    margin-bottom: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+
+#answer-input {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.2em;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    text-align: center;
+    transition: border-color 0.3s ease;
+}
+
+#answer-input:focus {
+    outline: none;
+    border-color: #3498db; /* フォーカス時の色 */
+}
+
+button {
+    background-color: #3498db; /* メインのボタン色 (青系) */
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    font-size: 1.1em;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.1s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+button:hover {
+    background-color: #2980b9;
+}
+button:active {
+    transform: translateY(1px);
+}
+
+#submit-button {
+    width: 100%;
+}
+
+#feedback-area {
+    margin-top: 30px;
+    padding: 20px;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+}
+
+#feedback-text {
+    font-size: 1.4em;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+#feedback-text.correct {
+    color: #2ecc71; /* 正解の色 (緑系) */
+}
+
+#feedback-text.incorrect {
+    color: #e74c3c; /* 不正解の色 (赤系) */
+}
+
+#info-area p {
+    font-size: 0.95em;
+    color: #444;
+    margin-bottom: 8px;
+    text-align: left;
+}
+#info-area p strong {
+    color: #2c3e50;
+}
+
+
+#next-button {
+    margin-top: 20px;
+    background-color: #2ecc71; /* 次へボタンの色 */
+}
+#next-button:hover {
+    background-color: #27ae60;
+}
+
+#game-over-area h2 {
+    font-size: 2em;
+    color: #3498db;
+    margin-bottom: 15px;
+}
+#game-over-area p {
+    font-size: 1.2em;
+    margin-bottom: 25px;
+}
+#restart-button {
+    background-color: #e67e22; /* リスタートボタンの色 */
+}
+#restart-button:hover {
+    background-color: #d35400;
+}
+
+
+.hidden {
+    display: none !important;
+}
+
+footer {
+    text-align: center;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    font-size: 0.8em;
+    color: #777;
+}
+
+/* レスポンシブ対応 (簡単な例) */
+@media (max-width: 600px) {
+    .container {
+        padding: 20px;
+    }
+    header h1 {
+        font-size: 2.2em;
+    }
+    #kanji-display {
+        font-size: 4em;
+    }
+    button, #answer-input {
+        font-size: 1em;
+        padding: 12px 20px;
+    }
+}
