@@ -8,14 +8,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Orbitron:wght@700;900&family=Roboto:wght@300;400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="performance-monitor" style="position:fixed; top:0; left:0; background:rgba(0,0,0,0.5); color:white; padding:5px; z-index:100000; font-size:12px;"></div>
+    <div id="performance-monitor" style="position:fixed; top:0; left:0; background:rgba(0,0,0,0.7); color:lime; padding:5px 8px; z-index:200000; font-size:12px; font-family: monospace;">FPS: N/A | Elements: 0 | Level: 0</div>
 
     <div class="container">
         <header>
             <h1 class="main-title"><span>KANJI</span> QUIZ <span class="neo-text">NEO</span></h1>
             <div id="game-status" class="game-status-bar">
-                <p>LEVEL: <span id="current-level">1</span></p>
-                <p>SCORE: <span id="current-score">0</span></p>
+                <p>LEVEL: <span id="current-level-display">1</span></p> <p>SCORE: <span id="current-score">0</span></p>
             </div>
         </header>
 
@@ -40,18 +39,18 @@
                     <p id="notes-info-container" class="hidden"><strong>追記:</strong> <span id="notes-text-content"></span></p>
                     <p id="other-spellings-info-container" class="hidden"><strong>別表記:</strong> <span id="other-spellings-text-content"></span></p>
                 </div>
-                <button id="next-question-button" class="action-button next-btn hidden"><span>次の問題</span></button>
+                <button id="next-question-button" class="action-button next-btn hidden"><span>次の問題へ</span></button>
             </div>
 
             <div id="game-over-section" class="game-result-section hidden">
-                <h2 class="result-title">終焉</h2>
+                <h2 class="result-title">全レベル制覇！ (または...)</h2>
                 <p class="final-score-display">最終スコア: <span id="final-score-value">0</span></p>
-                <button id="restart-game-button" class="action-button restart-btn"><span>再起動シーケンス...無理か？</span></button>
+                <button id="restart-game-button" class="action-button restart-btn"><span>もう一度</span></button>
             </div>
         </main>
 
         <footer class="page-footer">
-            <p>&copy; 2025 KANJI QUIZ NEO - TRUE ENDLESS CHAOS</p>
+            <p>&copy; 2025 KANJI QUIZ NEO - BALANCED CHAOS</p>
         </footer>
     </div>
 
