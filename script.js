@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
         questionSection: document.getElementById('question-section'),
         kanjiDisplay: document.getElementById('kanji-character-display'),
         imageContainer: document.getElementById('image-container'),
-        answerLengthHint: document.getElementById('answer-length-hint-display'), // ★★★ ヒントエリア追加 ★★★
+        answerLengthHint: document.getElementById('answer-length-hint-display'),
         answerInput: document.getElementById('answer-input-field'),
         submitButton: document.getElementById('submit-answer-button'),
         feedbackSection: document.getElementById('feedback-section'),
@@ -39,8 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentGameDisplayLevel = 1;
     let maxCsvLevel = 0;
     const csvFilePath = 'ankiDeck.csv';
+
+    let currentQuestionIncorrectAttempts = 0; // ★★★ Track incorrect attempts for current question ★★★
+    const MAX_INCORRECT_ATTEMPTS = 3; // ★★★ Allow 3 retries (total 4 attempts) ★★★
+
     let chaosIntervalId = null;
-    let nandeyaBoostTimeoutId = null;
+    let chaosModeStartTime = 0; // ★★★ Track chaos mode start time ★★★
     let isChaosModeActive = false;
     let flyingElementHueStart = Math.random() * 360;
     let flyingElementCount = 0;
@@ -109,8 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Game Logic ---
     function startGame() {
-        score=0; currentGameDisplayLevel=1; if(availableCsvLevels.length>0&&!availableCsvLevels.includes(1))currentGameDisplayLevel=availableCsvLevels[0];
-        elements.currentLevelDisplay.textContent=currentGameDisplayLevel; availableCsvLevels.forEach(level=>resetUnaskedQuestionsForCsvLevel(level));
+        score=0; currentGameDisplayLevel=1;
+        if(availableCsvLevels.length>0&&!availableCsvLevels.includes(1)) currentGameDisplayLevel=availableCsvLevels[0];
+        elements.currentLevelDisplay.textContent=currentGameDisplayLevel;
+        availableCsvLevels.forEach(level=>resetUnaskedQuestionsForCsvLevel(level));
         updateScoreDisplay(); elements.gameOverSection.classList.add('hidden'); elements.feedbackSection.classList.add('hidden');
         elements.loadingDisplay.classList.add('hidden'); elements.questionSection.classList.remove('hidden');
         enableGameControls(); displayNextQuestion();
@@ -122,50 +128,88 @@ document.addEventListener('DOMContentLoaded', () => {
             if (unaskedQuestionsByCsvLevel[String(targetDisplayLevel)].length > 0) return targetDisplayLevel;
         }
         for (let i=targetDisplayLevel; i>=1; i--) { if (availableCsvLevels.includes(i) && quizDataByCsvLevel[String(i)] && quizDataByCsvLevel[String(i)].length > 0) { if (!unaskedQuestionsByCsvLevel[String(i)] || unaskedQuestionsByCsvLevel[String(i)].length === 0) resetUnaskedQuestionsForCsvLevel(i); if (unaskedQuestionsByCsvLevel[String(i)].length > 0) return i; }}
+        // ★ If targetDisplayLevel is below any available CSV level, or if preferred levels are exhausted,
+        //    the new logic in displayNextQuestion will try to find *any* available question.
+        //    If truly nothing is found, it will default to the lowest or highest available as a last resort.
         return availableCsvLevels.length > 0 ? availableCsvLevels[0] : -1;
     }
 
     function displayNextQuestion() {
         if (isChaosModeActive) return;
+        currentQuestionIncorrectAttempts = 0; // ★★★ Reset incorrect attempts for new question ★★★
+
         let actualCsvLevelForQuery = getActualCsvLevelToQuery(currentGameDisplayLevel);
-        let csvLevelKey = String(actualCsvLevelForQuery);
+        let csvLevelKeyToUse = String(actualCsvLevelForQuery);
+        
         elements.currentLevelDisplay.textContent = currentGameDisplayLevel;
-        if (actualCsvLevelForQuery !== -1 && actualCsvLevelForQuery !== currentGameDisplayLevel) elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery})`;
-        if (actualCsvLevelForQuery === -1 || !quizDataByCsvLevel[csvLevelKey]) { showGameOver("適切な問題レベルが見つかりません。"); return; }
-        if (!unaskedQuestionsByCsvLevel[csvLevelKey] || unaskedQuestionsByCsvLevel[csvLevelKey].length === 0) resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery);
-        let pool = unaskedQuestionsByCsvLevel[csvLevelKey];
-        if (!pool || pool.length === 0) { if (maxCsvLevel > 0 && quizDataByCsvLevel[String(maxCsvLevel)]?.length > 0) { actualCsvLevelForQuery = maxCsvLevel; csvLevelKey = String(actualCsvLevelForQuery); resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery); pool = unaskedQuestionsByCsvLevel[csvLevelKey]; elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery} 再)`; } if (!pool || pool.length === 0) { showGameOver("問題データ枯渇。"); return; }}
-        const randomIndex = Math.floor(Math.random()*pool.length); currentQuestion = pool.splice(randomIndex,1)[0];
+        if (actualCsvLevelForQuery !== -1 && actualCsvLevelForQuery !== currentGameDisplayLevel) {
+            elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${actualCsvLevelForQuery})`;
+        }
+
+        if (actualCsvLevelForQuery === -1 || !quizDataByCsvLevel[csvLevelKeyToUse]) {
+            showGameOver("適切な問題レベルが見つかりません。データを確認してください。"); return;
+        }
+
+        // Ensure the pool for the determined CSV level is ready or refilled
+        if (!unaskedQuestionsByCsvLevel[csvLevelKeyToUse] || unaskedQuestionsByCsvLevel[csvLevelKeyToUse].length === 0) {
+            resetUnaskedQuestionsForCsvLevel(actualCsvLevelForQuery);
+        }
+        
+        let pool = unaskedQuestionsByCsvLevel[csvLevelKeyToUse];
+
+        // If pool is *still* empty, it implies all questions for this (and potentially fallback) CSV levels are asked.
+        // Instead of complex fallbacks here, the logic is: if current display level maps to an empty actual pool,
+        // it means we should have advanced the display level further. This will be handled by handleSubmit.
+        // For "levelすぐ探せないと次のレベルにいっていいよ", if a level is truly exhausted, handleSubmit will increment display level,
+        // and getActualCsvLevelToQuery will try to find the next best fit.
+        // If after all that, the pool is still empty, we might be at the end or have an issue.
+        if (!pool || pool.length === 0) {
+             // Try to find *any* available question from *any* CSV level as a last resort.
+            let foundAnyQuestion = false;
+            for (const level of availableCsvLevels) { // Iterate through available CSV levels
+                const key = String(level);
+                if (!unaskedQuestionsByCsvLevel[key] || unaskedQuestionsByCsvLevel[key].length === 0) {
+                    resetUnaskedQuestionsForCsvLevel(level); // Refill if needed
+                }
+                if (unaskedQuestionsByCsvLevel[key].length > 0) {
+                    csvLevelKeyToUse = key;
+                    pool = unaskedQuestionsByCsvLevel[key];
+                    elements.currentLevelDisplay.textContent = `${currentGameDisplayLevel} (問題Lv: ${csvLevelKeyToUse} 再)`;
+                    foundAnyQuestion = true;
+                    break;
+                }
+            }
+            if (!foundAnyQuestion) {
+                showGameOver("全ての有効な問題が終了しました。おめでとうございます！"); return;
+            }
+        }
+
+        const randomIndex = Math.floor(Math.random() * pool.length);
+        currentQuestion = pool.splice(randomIndex, 1)[0];
+
         elements.feedbackSection.classList.add('hidden'); elements.infoDetailsArea.classList.add('hidden'); elements.nextButton.classList.add('hidden');
         const wordToShow = currentQuestion.displayWords[Math.floor(Math.random()*currentQuestion.displayWords.length)];
         elements.kanjiDisplay.textContent = wordToShow;
         elements.imageContainer.innerHTML = `<img src="${STONE_IMAGE_FILENAME}" alt="Stylized Stone">`;
         
-        // ★★★ 文字数ヒント表示ロジック ★★★
-        let hintText = "";
-        elements.answerLengthHint.classList.add('hidden'); // Hide initially
+        let hintText = ""; elements.answerLengthHint.classList.add('hidden');
         if (currentQuestion.answers && currentQuestion.answers.length > 0) {
             const normalizedAnswers = currentQuestion.answers.map(ans => normalizeAnswer(ans)).filter(ans => ans.length > 0);
             if (normalizedAnswers.length > 0) {
                 let lengthForHint = normalizedAnswers.reduce((min, ans) => Math.min(min, ans.length), Infinity);
-                if (lengthForHint === Infinity) lengthForHint = 0; // Should not happen if normalizedAnswers not empty
-                
-                for (let i = 0; i < lengthForHint; i++) {
-                    hintText += "〇";
-                }
+                if (lengthForHint === Infinity) lengthForHint = 0;
+                for (let i = 0; i < lengthForHint; i++) hintText += "〇";
                 elements.answerLengthHint.textContent = hintText;
                 if (hintText) elements.answerLengthHint.classList.remove('hidden');
             }
         }
-        // ★★★ ここまでヒント表示ロジック ★★★
-
         elements.answerInput.value = ''; elements.answerInput.disabled = false; elements.submitButton.disabled = false; elements.answerInput.focus();
     }
 
     function handleSubmit() {
         if(elements.answerInput.disabled && !isChaosModeActive) return;
         const userAnswer = elements.answerInput.value.trim();
-        if (!currentQuestion) { console.error("No current question!"); displayNextQuestion(); return; }
+        if (!currentQuestion) { console.error("No current question for submit!"); displayNextQuestion(); return; }
         let isCorrect = false;
 
         if(!isChaosModeActive){
@@ -173,46 +217,78 @@ document.addEventListener('DOMContentLoaded', () => {
             for(const correctAnswer of currentQuestion.answers){ if(normalizeAnswer(correctAnswer) === normalizedUserAnswer){ isCorrect = true; break; }}
         }
         
-        elements.feedbackSection.classList.remove('hidden'); elements.infoDetailsArea.classList.remove('hidden');
-        elements.answerLengthHint.classList.add('hidden'); // Hide hint after answer
+        elements.feedbackSection.classList.remove('hidden');
+        elements.infoDetailsArea.classList.remove('hidden');
+        elements.answerLengthHint.classList.add('hidden');
 
         if(isCorrect){
             elements.feedbackMessage.textContent="正解！"; elements.feedbackMessage.className='message-feedback correct';
-            score+=10; currentGameDisplayLevel++; elements.currentLevelDisplay.textContent = currentGameDisplayLevel;
+            score+=10;
+            currentGameDisplayLevel++; // ★ Display Level up on correct answer ★
+            elements.currentLevelDisplay.textContent = currentGameDisplayLevel;
             elements.nextButton.classList.remove('hidden');
-            const nextQueryLevel = getActualCsvLevelToQuery(currentGameDisplayLevel);
-            if (quizDataByCsvLevel[String(nextQueryLevel)] && (!unaskedQuestionsByCsvLevel[String(nextQueryLevel)] || unaskedQuestionsByCsvLevel[String(nextQueryLevel)].length === 0)) {
-                resetUnaskedQuestionsForCsvLevel(nextQueryLevel);
-            }
+            currentQuestionIncorrectAttempts = 0; // Reset for next question
         } else {
-            elements.feedbackMessage.innerHTML = `不正解ッ！！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">15秒後</span>ブーストカオス</span>`;
-            elements.feedbackMessage.className='message-feedback incorrect';
-            const correctAnswersText = currentQuestion.answers.join(' ／ ');
-            elements.feedbackMessage.innerHTML += ` <span style="font-size:0.6em; color: var(--dim-text);">(正解: ${correctAnswersText})</span>`;
-            if(!isChaosModeActive) activateChaosMode();
-            elements.nextButton.classList.add('hidden');
+            currentQuestionIncorrectAttempts++; // ★★★ Increment incorrect attempts ★★★
+            if (currentQuestionIncorrectAttempts <= MAX_INCORRECT_ATTEMPTS) {
+                const chancesLeft = MAX_INCORRECT_ATTEMPTS - currentQuestionIncorrectAttempts + 1; // +1 because this is attempt N, so N-1 wrong
+                elements.feedbackMessage.textContent = `不正解… あと ${chancesLeft} 回解答できます。`;
+                elements.feedbackMessage.className = 'message-feedback incorrect';
+                elements.answerInput.value = ''; // Clear input for retry
+                elements.answerInput.disabled = false; // Re-enable input
+                elements.submitButton.disabled = false; // Re-enable submit
+                elements.answerInput.focus();
+                elements.nextButton.classList.add('hidden'); // Hide next button
+                // Info area (meaning, notes) should remain hidden on retry, only show on final fail/correct
+                elements.infoDetailsArea.classList.add('hidden');
+
+            } else { // Max attempts reached
+                elements.feedbackMessage.innerHTML = `不正解ッ！！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">時間差</span>カオス起動</span>`;
+                elements.feedbackMessage.className = 'message-feedback incorrect';
+                const correctAnswersText = currentQuestion.answers.join(' ／ ');
+                elements.feedbackMessage.innerHTML += ` <span style="font-size:0.6em; color: var(--dim-text);">(正解: ${correctAnswersText})</span>`;
+                
+                // Show full info on final fail before chaos
+                elements.meaningText.innerHTML = currentQuestion.meanings || '－';
+                if(currentQuestion.notes?.trim()){ elements.notesText.innerHTML = currentQuestion.notes; elements.notesContainer.classList.remove('hidden');}
+                else elements.notesContainer.classList.add('hidden');
+                const otherDisplayOptions = currentQuestion.displayWords.filter(w=>w!==elements.kanjiDisplay.textContent);
+                const allOtherSpellings = new Set([...otherDisplayOptions, ...currentQuestion.otherSpellingsFromColumn]);
+                if(allOtherSpellings.size > 0){ elements.otherSpellingsText.innerHTML = Array.from(allOtherSpellings).join('、 '); elements.otherSpellingsContainer.classList.remove('hidden');}
+                else elements.otherSpellingsContainer.classList.add('hidden');
+                
+                if(!isChaosModeActive) activateChaosMode();
+                elements.nextButton.classList.add('hidden'); // No next question in chaos
+                elements.answerInput.disabled = true; // Ensure these are disabled before chaos
+                elements.submitButton.disabled = true;
+            }
         }
-        elements.answerInput.disabled = true; elements.submitButton.disabled = true;
-        elements.meaningText.innerHTML = currentQuestion.meanings || '－';
-        if(currentQuestion.notes?.trim()){ elements.notesText.innerHTML = currentQuestion.notes; elements.notesContainer.classList.remove('hidden');}
-        else elements.notesContainer.classList.add('hidden');
-        const otherDisplayOptions = currentQuestion.displayWords.filter(w=>w!==elements.kanjiDisplay.textContent);
-        const allOtherSpellings = new Set([...otherDisplayOptions, ...currentQuestion.otherSpellingsFromColumn]);
-        if(allOtherSpellings.size > 0){ elements.otherSpellingsText.innerHTML = Array.from(allOtherSpellings).join('、 '); elements.otherSpellingsContainer.classList.remove('hidden');}
-        else elements.otherSpellingsContainer.classList.add('hidden');
-        updateScoreDisplay();
+        
+        if (isCorrect) { // Only show info and update score if correct
+            elements.meaningText.innerHTML = currentQuestion.meanings || '－';
+            if(currentQuestion.notes?.trim()){ elements.notesText.innerHTML = currentQuestion.notes; elements.notesContainer.classList.remove('hidden');}
+            else elements.notesContainer.classList.add('hidden');
+            const otherDisplayOptions = currentQuestion.displayWords.filter(w=>w!==elements.kanjiDisplay.textContent);
+            const allOtherSpellings = new Set([...otherDisplayOptions, ...currentQuestion.otherSpellingsFromColumn]);
+            if(allOtherSpellings.size > 0){ elements.otherSpellingsText.innerHTML = Array.from(allOtherSpellings).join('、 '); elements.otherSpellingsContainer.classList.remove('hidden');}
+            else elements.otherSpellingsContainer.classList.add('hidden');
+            updateScoreDisplay();
+        }
     }
     
     function normalizeAnswer(str) { if(!str)return"";return str.normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g,m=>String.fromCharCode(m.charCodeAt(0)-0x60)).replace(/\s+/g,''); }
     function updateScoreDisplay() { elements.currentScoreDisplay.textContent = score; }
     function showGameOver(message = "ゲームオーバー") { if(isChaosModeActive)return; elements.questionSection.classList.add('hidden');elements.feedbackSection.classList.add('hidden'); elements.gameOverSection.classList.remove('hidden'); elements.gameOverSection.querySelector('h2').textContent = message; elements.finalScoreDisplay.textContent=score; }
     
-    function disableGameControls() {
+    function disableGameControls(duringChaos = false) {
         elements.answerInput.disabled = true; elements.submitButton.disabled = true;
-        elements.nextButton.disabled = true; elements.restartButton.disabled = true;
-        let overlay = document.getElementById('chaos-active-overlay');
-        if (!overlay) { overlay = document.createElement('div'); overlay.id = 'chaos-active-overlay'; overlay.classList.add('chaos-active-overlay'); document.body.appendChild(overlay); }
-        overlay.classList.remove('hidden');
+        elements.nextButton.disabled = true; 
+        elements.restartButton.disabled = duringChaos; // Only disable restart fully during chaos
+        if (duringChaos) {
+            let overlay = document.getElementById('chaos-active-overlay');
+            if (!overlay) { overlay = document.createElement('div'); overlay.id = 'chaos-active-overlay'; overlay.classList.add('chaos-active-overlay'); document.body.appendChild(overlay); }
+            overlay.classList.remove('hidden');
+        }
     }
     function enableGameControls() {
         elements.answerInput.disabled=false;elements.submitButton.disabled=false;
@@ -221,61 +297,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (overlay) overlay.classList.add('hidden');
     }
 
-    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY (Adjusted for phrase balance & 15s Boost) ---
+    // --- Perpetual, Sticky, Hardcore Chaos - Nandeya ONLY (Time-based emphasis shift) ---
     function activateChaosMode() {
         if (isChaosModeActive) return; isChaosModeActive = true;
-        disableGameControls();
-        elements.feedbackMessage.innerHTML = `不正解…！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">永久</span>カオス開始！ (15秒後にブースト)</span>`;
+        chaosModeStartTime = Date.now(); // ★★★ Record chaos start time ★★★
+        disableGameControls(true); // Pass true to disable restart during chaos
+        elements.feedbackMessage.innerHTML = `不正解…！<br><span class="chaos-engage-text">「なんでや」<span class="emphasis-red">時限式カオス</span>開始！</span>`;
         
-        triggerNandeyaElementsBatch(30); // Initial burst: 30 (Balanced)
+        triggerNandeyaElementsBatch(25); // Initial burst (moderate)
 
         if (chaosIntervalId) clearInterval(chaosIntervalId);
         chaosIntervalId = setInterval(() => {
-            triggerNandeyaElementsBatch(10 + Math.floor(Math.random() * 11)); // Continuous: 10-20 elements
-        }, 800); // Interval: every 0.8 seconds (Balanced)
-
-        if (nandeyaBoostTimeoutId) clearTimeout(nandeyaBoostTimeoutId);
-        nandeyaBoostTimeoutId = setTimeout(() => {
-            if (isChaosModeActive) {
-                console.log("Executing 15-second Nandeya EMPHASIS Boost!");
-                elements.feedbackMessage.innerHTML += `<br><span style="color:var(--tertiary-accent); animation: pulseCorrect 0.8s infinite ease-in-out;">「なんでや」ブースト執行ッ！！</span>`;
-                triggerNandeyaElementsBatch(35 + Math.floor(Math.random() * 16), true); // Add 35-50 EXCLUSIVELY emphasized Nandeya phrases
-            }
-        }, 15000);
+            const elapsedTime = Date.now() - chaosModeStartTime;
+            const isBoostTime = elapsedTime >= 12000; // 12 seconds for boost
+            let numToGenerate = isBoostTime ? (15 + Math.floor(Math.random() * 11)) : (8 + Math.floor(Math.random() * 8)); // More if boost time
+            triggerNandeyaElementsBatch(numToGenerate, false, isBoostTime); // Pass boost flag
+        }, 750); // Interval every 0.75 seconds (slightly less aggressive base)
 
         requestAnimationFrame(updatePerformanceMonitorLoop);
     }
 
-    function triggerNandeyaElementsBatch(numElements, emphasizedOnly = false) {
-        const DURATION_BASE = 15000; const DURATION_RANDOM_ADD = 10000;
-        if (nandeyaPhrases.length === 0) nandeyaPhrases.push({text: "「なんでや」データ不足！", isEmphasized: true});
+    // Added 'forceEmphasisBoost' parameter
+    function triggerNandeyaElementsBatch(numElements, emphasizedOnlyForBoost = false, isBoostTimeActive = false) {
+        const DURATION_BASE = 14000; const DURATION_RANDOM_ADD = 9000;
+        if (nandeyaPhrases.length === 0) nandeyaPhrases.push({text: "「なんでや」データ不足！なんでや！", isEmphasized: true});
         
         const emphasizedAvailable = nandeyaPhrases.filter(p => p.isEmphasized);
         const normalAvailable = nandeyaPhrases.filter(p => !p.isEmphasized);
 
         for (let i = 0; i < numElements; i++) {
             let selectedPhraseObj;
-            if (emphasizedOnly) { // For the 15-second boost
-                if (emphasizedAvailable.length > 0) selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
-                else selectedPhraseObj = {text: "なんでやブースト！", isEmphasized: true}; // Fallback for boost
-            } else { // Normal batch generation logic
+            
+            if (emphasizedOnlyForBoost && emphasizedAvailable.length > 0) { // This was for the old 15s single boost
+                 selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
+            } else {
                 const emphasizeRoll = Math.random();
-                // ★ "なんでや" 強調フレーズの出現率 約40% (ブーストがあるので通常時は少し抑えめ) ★
-                if (emphasizedAvailable.length > 0 && (emphasizeRoll < 0.4 || normalAvailable.length === 0)) {
+                // ★ Time-based emphasis ratio ★
+                // During boost time (after 12s), higher chance for emphasized phrases.
+                // Before boost time, lower chance.
+                const emphasisTargetChance = isBoostTimeActive ? 0.75 : 0.20; // 75% vs 20%
+
+                if (emphasizedAvailable.length > 0 && (emphasizeRoll < emphasisTargetChance || normalAvailable.length === 0)) {
                     selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
                 } else if (normalAvailable.length > 0) {
                     selectedPhraseObj = normalAvailable[Math.floor(Math.random() * normalAvailable.length)];
-                } else if (emphasizedAvailable.length > 0) { // Fallback if normal exhausted
+                } else if (emphasizedAvailable.length > 0) {
                     selectedPhraseObj = emphasizedAvailable[Math.floor(Math.random() * emphasizedAvailable.length)];
                 } else {
-                    selectedPhraseObj = {text: "何故？…なんでや…", isEmphasized: true};
+                    selectedPhraseObj = {text: "何故なんだ…", isEmphasized: true};
                 }
             }
 
             const duration = DURATION_BASE + Math.random() * DURATION_RANDOM_ADD;
             setTimeout(() => {
                 createNandeyaElement(selectedPhraseObj.text, selectedPhraseObj.isEmphasized, duration);
-            }, i * (180 / numElements) );
+            }, i * (160 / numElements) ); // Slightly more spread out
         }
     }
 
@@ -286,27 +362,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isEmphasized) {
             el.classList.add('nandeya-emphasis');
-            el.style.fontSize = `${2.2 + Math.random() * 2.5}em`; // Emphasized: 2.2em to 4.7em
-            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + Math.floor(12 + Math.random()*12)).toString();
+            // ★ Emphasized size can be larger, especially during boost time (implicitly by higher chance of selection)
+            el.style.fontSize = `${2.0 + Math.random() * 2.0}em`; // 2.0em to 4.0em
+            el.style.zIndex = (parseInt(el.style.zIndex || 5000) + Math.floor(10 + Math.random()*15)).toString();
         } else {
             el.classList.add('general-rainbow-text');
-            // ★ 通常フレーズのフォントサイズを確保 ★
-            el.style.fontSize = `${1.3 + Math.random() * 1.0}em`; // Normal: 1.3em to 2.3em
+            el.style.fontSize = `${1.1 + Math.random() * 1.0}em`; // Normal: 1.1em to 2.1em (ensure visibility)
         }
         el.textContent = text;
         
-        const currentHue = (flyingElementHueStart + Math.random() * 160) % 360;
-        flyingElementHueStart = (flyingElementHueStart + 6) % 360;
+        const currentHue = (flyingElementHueStart + Math.random() * 150) % 360;
+        flyingElementHueStart = (flyingElementHueStart + 7) % 360;
 
         el.style.setProperty('--base-hue', currentHue + 'deg');
-        el.style.backgroundColor = `hsla(${currentHue}, 88%, ${9 + Math.random()*11}%, ${0.7 + Math.random()*0.23})`;
-        el.style.border = `2px solid hsla(${(currentHue + Math.random()*48 -24) % 360}, 98%, ${53 + Math.random()*21}%, ${0.8 + Math.random()*0.16})`;
+        el.style.backgroundColor = `hsla(${currentHue}, 85%, ${9 + Math.random()*10}%, ${0.7 + Math.random()*0.2})`;
+        el.style.border = `2px solid hsla(${(currentHue + Math.random()*40 -20) % 360}, 95%, ${50 + Math.random()*20}%, ${0.8 + Math.random()*0.15})`;
         
-        // Text color & shadow for nandeya-emphasis is handled by its CSS class.
-        // For general-rainbow-text, CSS handles hue-rotate, but we can set a base readable color.
         if (!isEmphasized) {
-            el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 87%)`;
-            el.style.textShadow = `0 0 1.5px black, 0 0 3px black, 0 0 5.5px hsla(${(currentHue + 195)%360}, 100%, 63%, 0.78)`;
+            el.style.color = `hsl(${(currentHue + 180) % 360}, 100%, 85%)`;
+            el.style.textShadow = `0 0 1.5px black, 0 0 3px black, 0 0 6px hsla(${(currentHue + 190)%360}, 100%, 60%, 0.75)`;
         }
 
         document.body.appendChild(el);
@@ -315,33 +389,37 @@ document.addEventListener('DOMContentLoaded', () => {
         const elRect = el.getBoundingClientRect(); const elW = elRect.width; const elH = elRect.height;
 
         const animType = Math.random(); let keyframes;
-        let animDuration = duration * (0.8 + Math.random() * 0.45);
-        let animEasing = `cubic-bezier(${Math.random()*0.28}, ${0.41 + Math.random()*0.49}, ${0.72 - Math.random()*0.28}, ${Math.random()*0.49 + 0.11})`;
-        let iterations = Infinity; let direction = (Math.random() < 0.43 ? 'alternate-reverse' : 'normal');
+        let animDuration = duration * (0.8 + Math.random() * 0.4);
+        let animEasing = `cubic-bezier(${Math.random()*0.25 + 0.08}, ${0.4 + Math.random()*0.5}, ${0.7 - Math.random()*0.25}, ${Math.random()*0.5 + 0.12})`;
+        let iterations = Infinity; let direction = (Math.random() < 0.4 ? 'alternate-reverse' : 'normal');
 
         const startX = Math.random() * screenW - elW / 2; const startY = Math.random() * screenH - elH / 2;
         let endX, endY;
-        const rotStart = Math.random() * 630 - 315; let rotEnd = rotStart + (Math.random() > 0.5 ? 1:-1) * (630 + Math.random()*750);
+        const rotStart = Math.random() * 540 - 270; let rotEnd = rotStart + (Math.random() > 0.5 ? 1:-1) * (540 + Math.random()*600);
 
-        if (animType < 0.1) { // Super Sticky
-            endX = startX + (Math.random()*20-10); endY = startY + (Math.random()*20-10); rotEnd = rotStart + (Math.random()*28-14); animDuration*=(1.8+Math.random()*1.0); animEasing='steps(3,end)'; direction='alternate';
-        } else if (animType < 0.36) { // Edge Loiterer
+        // Movement patterns adjusted for better "stickiness" vs "派手さ" balance
+        if (animType < 0.15) { // Sticky, slow, less rotation
+            endX = startX + (Math.random()*30-15); endY = startY + (Math.random()*30-15); rotEnd = rotStart + (Math.random()*40-20); animDuration*=(1.7+Math.random()*0.8); animEasing='linear'; direction='alternate';
+        } else if (animType < 0.45) { // Edge Loiterer, more pronounced sticking to edges
             const edge=Math.floor(Math.random()*4);
-            if(edge===0){endX=Math.random()*screenW;endY=Math.random()*elH*0.25-elH*0.1;} else if(edge===1){endX=screenW-Math.random()*elW*0.25+elW*0.1;endY=Math.random()*screenH;} else if(edge===2){endX=Math.random()*screenW;endY=screenH-Math.random()*elH*0.25+elH*0.1;} else{endX=Math.random()*elW*0.25-elW*0.1;endY=Math.random()*screenH;}
-            animDuration*=(1.3+Math.random()*0.65); rotEnd=rotStart+(Math.random()*48-24);
-        } else { // Dynamic Chaos
-            endX = Math.random()*screenW*1.85-screenW*0.42; endY = Math.random()*screenH*1.85-screenH*0.42;
+            if(edge===0){endX=Math.random()*screenW;endY=Math.random()*elH*0.1-elH*0.05;} // Closer to top edge
+            else if (edge===1){endX=screenW-Math.random()*elW*0.1+elW*0.05;endY=Math.random()*screenH;} // Closer to right
+            else if (edge===2){endX=Math.random()*screenW;endY=screenH-Math.random()*elH*0.1+elH*0.05;} // Closer to bottom
+            else{endX=Math.random()*elW*0.1-elW*0.05;endY=Math.random()*screenH;} // Closer to left
+            animDuration*=(1.25+Math.random()*0.55); rotEnd=rotStart+(Math.random()*60-30);
+        } else { // Dynamic Chaos, wider movement, still visible
+            endX = Math.random()*screenW*1.7-screenW*0.35; endY = Math.random()*screenH*1.7-screenH*0.35;
         }
         
-        const initialScale = 0.17 + Math.random()*0.23;
-        const peakScale = isEmphasized ? (1.45 + Math.random()*0.7) : (0.92 + Math.random()*0.42);
-        const finalPersistScale = isEmphasized ? (0.76 + Math.random()*0.42) : (0.51 + Math.random()*0.31);
+        const initialScale = 0.2 + Math.random()*0.25;
+        const peakScale = isEmphasized ? (1.35 + Math.random()*0.65) : (0.9 + Math.random()*0.35);
+        const finalPersistScale = isEmphasized ? (0.7 + Math.random()*0.4) : (0.5 + Math.random()*0.3);
 
         keyframes = [
-            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(12px) brightness(0.45)'},
-            { transform: `translate(${startX + (endX-startX)*0.09}px, ${startY + (endY-startY)*0.09}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.09}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.16) saturate(1.65)', offset: 0.095 },
-            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / (isEmphasized?1.68:2.08)}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.955, filter: `brightness(1.01) saturate(1.32) hue-rotate(${Math.random()*24-12}deg)`, offset: 0.36 + Math.random()*0.23 },
-            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.89 + Math.random()*0.11, filter: `brightness(0.93) saturate(1.16) hue-rotate(${Math.random()*48-24}deg)` }
+            { transform: `translate(${startX}px, ${startY}px) scale(${initialScale}) rotate(${rotStart}deg)`, opacity: 0, filter: 'blur(12px) brightness(0.5)'},
+            { transform: `translate(${startX + (endX-startX)*0.1}px, ${startY + (endY-startY)*0.1}px) scale(${peakScale}) rotate(${rotStart + (rotEnd - rotStart)*0.1}deg)`, opacity: 1, filter: 'blur(0px) brightness(1.1) saturate(1.6)', offset: 0.1 },
+            { transform: `translate(${startX + (endX-startX)*0.5}px, ${startY + (endY-startY)*0.5}px) scale(${(peakScale + finalPersistScale) / (isEmphasized?1.7:2.1)}) rotate(${rotStart + (rotEnd - rotStart)*0.5}deg)`, opacity: 0.95, filter: `brightness(1.0) saturate(1.3) hue-rotate(${Math.random()*20-10}deg)`, offset: 0.38 + Math.random()*0.2 },
+            { transform: `translate(${endX}px, ${endY}px) scale(${finalPersistScale}) rotate(${rotEnd}deg)`, opacity: 0.9 + Math.random()*0.1, filter: `brightness(0.9) saturate(1.1) hue-rotate(${Math.random()*40-20}deg)` }
         ];
         const timing = { duration: animDuration, easing: animEasing, iterations: Infinity, direction: direction };
         
@@ -355,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.nextButton.addEventListener('click', displayNextQuestion);
     elements.restartButton.addEventListener('click', () => {
         if (chaosIntervalId) clearInterval(chaosIntervalId); chaosIntervalId = null;
-        if (nandeyaBoostTimeoutId) clearTimeout(nandeyaBoostTimeoutId); nandeyaBoostTimeoutId = null;
+        if (nandeyaBoostTimeoutId) clearTimeout(nandeyaBoostTimeoutId); nandeyaBoostTimeoutId = null; // Clear boost timer on restart
         isChaosModeActive = false;
         document.querySelectorAll('.flying-element').forEach(fe => fe.remove());
         flyingElementCount = 0;
