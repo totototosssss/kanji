@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const csvFilePath = 'ankiDeck.csv';
 
     let currentQuestionIncorrectAttempts = 0; // ★★★ Track incorrect attempts for current question ★★★
-    const MAX_INCORRECT_ATTEMPTS = 3; // ★★★ Allow 3 retries (total 4 attempts) ★★★
+    const MAX_INCORRECT_ATTEMPTS = 2; // ★★★ Allow 3 retries (total 4 attempts) ★★★
 
     let chaosIntervalId = null;
     let chaosModeStartTime = 0; // ★★★ Track chaos mode start time ★★★
